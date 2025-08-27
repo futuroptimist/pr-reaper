@@ -65,6 +65,15 @@ jobs:
             echo "::error::gh is unauthenticated; check PR_REAPER_TOKEN."
             exit 1
           fi
+          SCOPES=$(gh api -i user 2>/dev/null | tr -d '\r' | sed -n 's/^x-oauth-scopes: //p')
+          echo "token scopes: ${SCOPES:-"(none)"}"
+          if ! grep -qw repo <<< "$SCOPES"; then
+            echo "::error::PR_REAPER_TOKEN lacks repo scope; search will be empty."
+            exit 1
+          fi
+          if ! grep -qw read:org <<< "$SCOPES"; then
+            echo "::warning::PR_REAPER_TOKEN lacks read:org; org PRs may be skipped."
+          fi
 
       - name: Build search query
         id: q
