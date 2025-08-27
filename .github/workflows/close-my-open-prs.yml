@@ -79,7 +79,11 @@ jobs:
       - name: List PRs and write report
         if: ${{ github.event.inputs.dry_run == 'true' }}
         run: |
-          jq -r '.[] | "- [\(.title)](\(.url))"' prs.json | tee pr-report.md
+          jq -r '.[] | "- [\(.title)](\(.url))"' prs.json > pr-report.md
+          if [ ! -s pr-report.md ]; then
+            echo "No open PRs found." > pr-report.md
+          fi
+          cat pr-report.md
 
       - name: Upload PR report
         if: ${{ github.event.inputs.dry_run == 'true' }}

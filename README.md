@@ -19,7 +19,8 @@ Add it under: Repo → Settings → Secrets and variables → Actions → New re
 
 ## Use
 1. Go to **Actions → Close my open PRs → Run workflow**.
-2. Leave **dry_run=true** to preview.
+2. Leave **dry_run=true** to preview. The run uploads a `dry-run-prs`
+   artifact listing matching PRs or a note when none are found.
 3. When happy, re-run with **dry_run=false**.
 4. Optional inputs:
    - `org`: only PRs in a specific org
