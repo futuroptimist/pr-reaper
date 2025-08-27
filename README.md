@@ -9,10 +9,13 @@ before reaping begins.
 This workflow uses the GitHub CLI (`gh`). In Actions, `gh` will authenticate as:
 
 - `GH_TOKEN` if set (recommended) — provide a **Personal Access Token (classic)** with `repo` and
-  `read:org`, saved as `PR_REAPER_TOKEN`, exported as `GH_TOKEN` in the job. The workflow verifies
-  that the token includes `repo` and warns if `read:org` is missing.
+  `read:org`, saved as `PR_REAPER_TOKEN`, exported as `GH_TOKEN` in the job. The workflow now fails
+  if `repo` scope is missing and warns when `read:org` is absent.
 - Otherwise, it may fall back to `GITHUB_TOKEN` or be unauthenticated. `GITHUB_TOKEN` is only scoped
   to the current repo, so cross-repo searches will return nothing.
+
+If you provide the `org` input, the token must include `read:org` scope or the workflow will exit
+early with an error.
 
 If no token is detected, `gh` cannot determine the current user, or `repo` scope is missing, the
 workflow fails early with an error to avoid silently returning zero results.

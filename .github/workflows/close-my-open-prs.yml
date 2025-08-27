@@ -83,9 +83,14 @@ jobs:
           grep -Eiq '(^|[[:space:],])repo([[:space:],]|$)' <<< "${SCOPES_TRIM:-}" && has_repo=1 || true
           grep -Eiq '(^|[[:space:],])read:org([[:space:],]|$)' <<< "${SCOPES_TRIM:-}" && has_readorg=1 || true
 
+          ORG_INPUT="${{ github.event.inputs.org }}"
           if [ "$has_repo" -ne 1 ]; then
-            echo "::warning::Could not verify 'repo' scope from headers; continuing."
-            echo "::warning::The next API call will fail if insufficient."
+            echo "::error::GH_TOKEN lacks 'repo' scope; add PR_REAPER_TOKEN with repo scope."
+            exit 1
+          fi
+          if [ -n "$ORG_INPUT" ] && [ "$has_readorg" -ne 1 ]; then
+            echo "::error::GH_TOKEN lacks 'read:org' scope required for org searches."
+            exit 1
           fi
           if [ "$has_readorg" -ne 1 ]; then
             echo "::warning::Could not verify 'read:org'; org PRs may be skipped."
