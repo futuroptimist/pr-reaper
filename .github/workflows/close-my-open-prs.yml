@@ -115,11 +115,14 @@ jobs:
           if [ "${{ github.event.inputs.delete_branch }}" = "true" ]; then
             DELETE_FLAG="--delete-branch"
           fi
-          jq -r '.[] | (.repositoryUrl | sub("^https://github.com/";"")) as $r
-            | "gh pr close \(.number) --repo \($r) --comment \"${{ github.event.inputs.comment }}\" " + '"'"$DELETE_FLAG"'"'' \
-            prs.json \
-          | sed 's/  \+/ /g' \
-          | while read -r CMD; do
-              echo "$CMD"
-              eval "$CMD"
+          COMMENT="${{ github.event.inputs.comment }}"
+          jq -r '.[] | "\(.number)\t\(.repositoryUrl)"' prs.json \
+          | while IFS=$'\t' read -r NUM REPO_URL; do
+              REPO="${REPO_URL#https://github.com/}"
+              CMD=(gh pr close "$NUM" --repo "$REPO" --comment "$COMMENT")
+              if [ -n "$DELETE_FLAG" ]; then
+                CMD+=("$DELETE_FLAG")
+              fi
+              echo "${CMD[*]}"
+              "${CMD[@]}"
             done
