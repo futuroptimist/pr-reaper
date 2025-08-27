@@ -55,9 +55,24 @@ jobs:
           echo "gh auth status:"
           gh auth status || true
           echo "gh api user (login):"
-          gh api user --jq .login || true
+          LOGIN=$(gh api user --jq .login 2>/dev/null || true)
+          echo "${LOGIN:-"(none)"}"
           if [ -z "${GH_TOKEN:-}" ]; then
-            echo "::warning::GH_TOKEN is not set; gh may use GITHUB_TOKEN or be unauthenticated. Cross-repo searches can fail or return 0."
+            echo "::error::GH_TOKEN is not set; add PR_REAPER_TOKEN with repo scope."
+            exit 1
+          fi
+          if [ -z "$LOGIN" ]; then
+            echo "::error::gh is unauthenticated; check PR_REAPER_TOKEN."
+            exit 1
+          fi
+          SCOPES=$(gh api -i user 2>/dev/null | tr -d '\r' | sed -n 's/^x-oauth-scopes: //p')
+          echo "token scopes: ${SCOPES:-"(none)"}"
+          if ! grep -qw repo <<< "$SCOPES"; then
+            echo "::error::PR_REAPER_TOKEN lacks repo scope; search will be empty."
+            exit 1
+          fi
+          if ! grep -qw read:org <<< "$SCOPES"; then
+            echo "::warning::PR_REAPER_TOKEN lacks read:org; org PRs may be skipped."
           fi
 
       - name: Build search query
