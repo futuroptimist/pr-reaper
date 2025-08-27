@@ -69,11 +69,12 @@ jobs:
 
           # Case-insensitive header parse; some runners capitalize this header.
           RAW_HEADERS="$(gh api -i user 2>/dev/null | tr -d '\r' || true)"
-          SCOPES="$(awk 'BEGIN{IGNORECASE=1} /^x-oauth-scopes:/ {sub(/^x-oauth-scopes:[[:space:]]*/,""); print}' <<< "$RAW_HEADERS")"
+          SCOPES="$(awk 'BEGIN{IGNORECASE=1} /^x-oauth-scopes:/ {sub(/^x-oauth-scopes:[[:space:]]*/,""); print}' \
+            <<< "$RAW_HEADERS")"
 
           # Fallback: parse scopes from `gh auth status` if header isn’t present.
           if [ -z "${SCOPES:-}" ]; then
-            SCOPES="$(gh auth status 2>/dev/null | sed -n 's/.*Token scopes: \(.*\)$/\1/p' | tr -d "'\" | tr -d ,)"
+            SCOPES="$(gh auth status 2>/dev/null | sed -n 's/.*Token scopes: \(.*\)$/\1/p' | tr -d ,)"
           fi
           SCOPES_TRIM="$(echo "${SCOPES:-}" | xargs || true)"
           echo "token scopes (best-effort): ${SCOPES_TRIM:-"(unknown)"}"
@@ -83,7 +84,8 @@ jobs:
           grep -Eiq '(^|[[:space:],])read:org([[:space:],]|$)' <<< "${SCOPES_TRIM:-}" && has_readorg=1 || true
 
           if [ "$has_repo" -ne 1 ]; then
-            echo "::warning::Could not verify 'repo' scope from headers; continuing. The next API call will fail if insufficient."
+            echo "::warning::Could not verify 'repo' scope from headers; continuing."
+            echo "::warning::The next API call will fail if insufficient."
           fi
           if [ "$has_readorg" -ne 1 ]; then
             echo "::warning::Could not verify 'read:org'; org PRs may be skipped."
