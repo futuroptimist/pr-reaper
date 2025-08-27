@@ -1,0 +1,93 @@
+name: Close my open PRs
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "List what would be closed (no changes)"
+        type: boolean
+        default: true
+      org:
+        description: "Limit to an org (optional, e.g. your-org)"
+        type: string
+        default: ""
+      title_filter:
+        description: "Substring to match in PR title (optional, e.g. Codex)"
+        type: string
+        default: ""
+      delete_branch:
+        description: "Delete the PR source branch after closing"
+        type: boolean
+        default: false
+      limit:
+        description: "Max PRs to process (1–1000)"
+        type: number
+        default: 1000
+      comment:
+        description: "Closing comment"
+        type: string
+        default: "Closing as superseded by a newer Codex run."
+
+permissions:
+  contents: read
+
+jobs:
+  reap:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.PR_REAPER_TOKEN }}
+    steps:
+      - name: Install gh + jq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gh jq
+
+      - name: Build search query
+        id: q
+        run: |
+          Q="is:pr is:open author:@me"
+          if [ -n "${{ github.event.inputs.org }}" ]; then
+            Q="$Q org:${{ github.event.inputs.org }}"
+          fi
+          if [ -n "${{ github.event.inputs.title_filter }}" ]; then
+            # GitHub's search lacks a direct substring operator for title only.
+            # Use in:title to constrain to the title field.
+            Q="$Q in:title ${{ github.event.inputs.title_filter }}"
+          fi
+          echo "q=$Q" >> $GITHUB_OUTPUT
+
+      - name: Search PRs
+        id: search
+        run: |
+          gh search issues "${{ steps.q.outputs.q }}" \
+            --limit ${{ github.event.inputs.limit }} \
+            --json number,repositoryUrl,title,url,author,headRefName \
+            | tee prs.json
+
+          COUNT=$(jq 'length' prs.json)
+          echo "count=$COUNT" >> $GITHUB_OUTPUT
+          echo "Found $COUNT PRs"
+
+      - name: Dry-run listing
+        if: ${{ github.event.inputs.dry_run == 'true' }}
+        run: |
+          jq -r '.[] | "\(.url) — \(.title)"' prs.json
+
+      - name: Close PRs
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        run: |
+          DELETE_FLAG=""
+          if [ "${{ github.event.inputs.delete_branch }}" = "true" ]; then
+            DELETE_FLAG="--delete-branch"
+          fi
+
+          jq -r '.[] | "\(.number) \(.repositoryUrl)"' prs.json \
+          | while read -r NUMBER REPO_URL; do
+              REPO="${REPO_URL#https://github.com/}"
+              CMD="gh pr close $NUMBER --repo $REPO --comment \"${{ github.event.inputs.comment }}\""
+              if [ -n "$DELETE_FLAG" ]; then
+                CMD="$CMD $DELETE_FLAG"
+              fi
+              echo "$CMD"
+              eval "$CMD"
+            done
