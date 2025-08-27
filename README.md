@@ -2,15 +2,15 @@
 
 One-button workflow to close all open pull requests authored by you. Designed for sweeping away
 orphaned or superseded PRs (e.g., from automated Codex runs) in bulk, with a safe dry-run mode
-before reaping begins.
+before reaping begins. `gh search prs` powers the lookup so results match what GitHub shows.
 
 ## Auth (important)
 
 This workflow uses the GitHub CLI (`gh`). In Actions, `gh` will authenticate as:
 
 - `GH_TOKEN` if set (recommended) — provide a **Personal Access Token (classic)** with `repo` and
-  `read:org`, saved as `PR_REAPER_TOKEN`, exported as `GH_TOKEN` in the job. The workflow now fails
-  if `repo` scope is missing and warns when `read:org` is absent.
+  `read:org`, saved as `PR_REAPER_TOKEN`, exported as `GH_TOKEN` in the job. The workflow fails if
+  `repo` scope is missing and warns when `read:org` is absent.
 - Otherwise, it may fall back to `GITHUB_TOKEN` or be unauthenticated. `GITHUB_TOKEN` is only scoped
   to the current repo, so cross-repo searches will return nothing.
 
@@ -30,6 +30,6 @@ identity `gh` is using.
 3. When happy, re-run with **dry_run=false**.
 4. Optional inputs:
    - `org`: only PRs in a specific org
-   - `title_filter`: only PRs with substring in the title (uses `in:title`)
+  - `title_filter`: only PRs with substring in the title (`gh search prs --search str --match title`)
    - `delete_branch`: also delete the PR source branch
    - `comment`: closing message

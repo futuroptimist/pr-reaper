@@ -90,31 +90,25 @@ jobs:
           if [ "$has_readorg" -ne 1 ]; then
             echo "::warning::Could not verify 'read:org'; org PRs may be skipped."
           fi
-
-      - name: Build search query
-        id: q
+      - name: Search PRs
+        # Use gh search prs to match results from GitHub UI.
+        id: search
         run: |
           AUTHOR="${{ github.event.inputs.author }}"
           if [ -z "$AUTHOR" ]; then
             AUTHOR="${{ github.actor }}"
           fi
-          Q="is:pr is:open author:${AUTHOR}"
+          CMD=(gh search prs --author "$AUTHOR" --state open \
+            --limit ${{ github.event.inputs.limit }} \
+            --json number,repository,title,url)
           if [ -n "${{ github.event.inputs.org }}" ]; then
-            Q="$Q org:${{ github.event.inputs.org }}"
+            CMD+=(--owner "${{ github.event.inputs.org }}")
           fi
           if [ -n "${{ github.event.inputs.title_filter }}" ]; then
-            Q="$Q in:title ${{ github.event.inputs.title_filter }}"
+            CMD+=(--search "${{ github.event.inputs.title_filter }}" --match title)
           fi
-          echo "Search query: $Q"
-          echo "q=$Q" >> $GITHUB_OUTPUT
-
-      - name: Search PRs
-        id: search
-        run: |
-          gh search issues "${{ steps.q.outputs.q }}" \
-            --limit ${{ github.event.inputs.limit }} \
-            --json number,repository,title,url \
-            | tee prs.json
+          echo "Search command: ${CMD[*]}"
+          "${CMD[@]}" | tee prs.json
           COUNT=$(jq 'length' prs.json)
           echo "Found $COUNT PR(s)"
           echo "count=$COUNT" >> $GITHUB_OUTPUT
