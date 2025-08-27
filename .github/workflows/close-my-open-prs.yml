@@ -126,9 +126,7 @@ jobs:
               echo ""
               jq -r '
                 .[] |
-                "- [\(.title)](\(.url))  (" +
-                (.repository.url | sub("^https://github.com/"; "")) +
-                "#\(.number))"
+                "- [\(.title)](\(.url))  (\(.repository.nameWithOwner)#\(.number))"
               ' prs.json
             fi
           } >> "$GITHUB_STEP_SUMMARY"
@@ -146,9 +144,8 @@ jobs:
             DELETE_FLAG="--delete-branch"
           fi
           COMMENT="${{ github.event.inputs.comment }}"
-          jq -r '.[] | "\(.number)\t\(.repository.url)"' prs.json \
-          | while IFS=$'\t' read -r NUM REPO_URL; do
-              REPO="${REPO_URL#https://github.com/}"
+          jq -r '.[] | "\(.number)\t\(.repository.nameWithOwner)"' prs.json \
+          | while IFS=$'\t' read -r NUM REPO; do
               CMD=(gh pr close "$NUM" --repo "$REPO" --comment "$COMMENT")
               if [ -n "$DELETE_FLAG" ]; then
                 CMD+=("$DELETE_FLAG")
