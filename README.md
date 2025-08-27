@@ -4,18 +4,17 @@ One-button workflow to close all open pull requests authored by you. Designed fo
 orphaned or superseded PRs (e.g., from automated Codex runs) in bulk, with a safe dry-run mode
 before reaping begins.
 
-## Auth
-Create a fine-grained Personal Access Token and store it as a repo secret named
-`PR_REAPER_TOKEN`.
+## Auth (important)
 
-- **Owner**: your user
-- **Resource access**: select the orgs/repos you want it to manage
-- **Permissions**: Repository → Pull requests: Read/Write, Contents: Read
-- If you need to act on private repos across multiple orgs, include those explicitly in the
-  token's resource access.
+This workflow uses the GitHub CLI (`gh`). In Actions, `gh` will authenticate as:
 
-Add it under: Repo → Settings → Secrets and variables → Actions → New repository secret →
-`PR_REAPER_TOKEN`.
+- `GH_TOKEN` if set (recommended) — provide a **Personal Access Token (classic)** with `repo` and
+  `read:org`, saved as `PR_REAPER_TOKEN`, exported as `GH_TOKEN` in the job.
+- Otherwise, it may fall back to `GITHUB_TOKEN` or be unauthenticated. `GITHUB_TOKEN` is only scoped
+  to the current repo, so cross-repo searches will return nothing.
+
+Tip: The workflow prints `gh auth status` and `gh api user --jq .login` so you can verify which
+identity `gh` is using.
 
 ## Use
 1. Go to **Actions → Close my open PRs → Run workflow**.

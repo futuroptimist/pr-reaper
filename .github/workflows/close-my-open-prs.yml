@@ -4,11 +4,15 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: "dry_run: when true, list what would be closed without making changes"
+        description: "dry_run: when true, list what would be closed (no changes)"
         type: boolean
         default: true
+      author:
+        description: "GitHub username for author: qualifier (blank → uses github.actor)"
+        type: string
+        default: ""
       org:
-        description: "Limit to an org (optional, e.g. your-org)"
+        description: "Limit to an org (optional, e.g. democratizedspace)"
         type: string
         default: ""
       title_filter:
@@ -30,10 +34,12 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 jobs:
   reap:
     runs-on: ubuntu-latest
+    # Prefer a user PAT if provided. If PR_REAPER_TOKEN is not set, gh will likely use GITHUB_TOKEN (repo-scoped) or be unauthenticated.
     env:
       GH_TOKEN: ${{ secrets.PR_REAPER_TOKEN }}
     steps:
@@ -42,18 +48,33 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gh jq
 
+      - name: Show auth identity
+        run: |
+          echo "gh version:"
+          gh --version | head -n1 || true
+          echo "gh auth status:"
+          gh auth status || true
+          echo "gh api user (login):"
+          gh api user --jq .login || true
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::warning::GH_TOKEN is not set; gh may use GITHUB_TOKEN or be unauthenticated. Cross-repo searches can fail or return 0."
+          fi
+
       - name: Build search query
         id: q
         run: |
-          Q="is:pr is:open author:@me"
+          AUTHOR="${{ github.event.inputs.author }}"
+          if [ -z "$AUTHOR" ]; then
+            AUTHOR="${{ github.actor }}"
+          fi
+          Q="is:pr is:open author:${AUTHOR} archived:false"
           if [ -n "${{ github.event.inputs.org }}" ]; then
             Q="$Q org:${{ github.event.inputs.org }}"
           fi
           if [ -n "${{ github.event.inputs.title_filter }}" ]; then
-            # GitHub's search lacks a direct substring operator for title only.
-            # Use in:title to constrain to the title field.
             Q="$Q in:title ${{ github.event.inputs.title_filter }}"
           fi
+          echo "Search query: $Q"
           echo "q=$Q" >> $GITHUB_OUTPUT
 
       - name: Search PRs
@@ -61,52 +82,44 @@ jobs:
         run: |
           gh search issues "${{ steps.q.outputs.q }}" \
             --limit ${{ github.event.inputs.limit }} \
-            --json number,repositoryUrl,title,url,author,headRefName \
+            --json number,repositoryUrl,title,url,headRefName \
             | tee prs.json
-
           COUNT=$(jq 'length' prs.json)
+          echo "Found $COUNT PR(s)"
           echo "count=$COUNT" >> $GITHUB_OUTPUT
-          echo "Found $COUNT PRs"
 
-      - name: Announce mode
+      - name: Write summary
         run: |
-          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
-            echo "This run is a dry_run=true – no PRs will be closed."
-          else
-            echo "Dry run is disabled (dry_run=false) – closing PRs now."
-          fi
+          COUNT="${{ steps.search.outputs.count }}"
+          {
+            echo "## pr-reaper summary"
+            echo ""
+            if [ "$COUNT" = "0" ]; then
+              echo "No open PRs found."
+            else
+              echo "Found **$COUNT** open PR(s):"
+              echo ""
+              jq -r '.[] | "- [\(.title)](\(.url))  (`\(.repositoryUrl | sub(\"^https://github.com/\"; \"\"))#\(.number)` head=\(.headRefName))"' prs.json
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: List PRs and write report
+      - name: Dry-run listing
         if: ${{ github.event.inputs.dry_run == 'true' }}
         run: |
-          jq -r '.[] | "- [\(.title)](\(.url))"' prs.json > pr-report.md
-          if [ ! -s pr-report.md ]; then
-            echo "No open PRs found." > pr-report.md
-          fi
-          cat pr-report.md
-
-      - name: Upload PR report
-        if: ${{ github.event.inputs.dry_run == 'true' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: dry-run-prs
-          path: pr-report.md
+          jq -r '.[] | "\(.url) — \(.title)"' prs.json
 
       - name: Close PRs
-        if: ${{ github.event.inputs.dry_run != 'true' }}
+        if: ${{ github.event.inputs.dry_run != 'true' && steps.search.outputs.count != '0' }}
         run: |
           DELETE_FLAG=""
           if [ "${{ github.event.inputs.delete_branch }}" = "true" ]; then
             DELETE_FLAG="--delete-branch"
           fi
-
-          jq -r '.[] | "\(.number) \(.repositoryUrl)"' prs.json \
-          | while read -r NUMBER REPO_URL; do
-              REPO="${REPO_URL#https://github.com/}"
-              CMD="gh pr close $NUMBER --repo $REPO --comment \"${{ github.event.inputs.comment }}\""
-              if [ -n "$DELETE_FLAG" ]; then
-                CMD="$CMD $DELETE_FLAG"
-              fi
+          jq -r '.[] | (.repositoryUrl | sub("^https://github.com/";"")) as $r
+            | "gh pr close \(.number) --repo \($r) --comment \"${{ github.event.inputs.comment }}\" " + '"'"$DELETE_FLAG"'"'' \
+            prs.json \
+          | sed 's/  \+/ /g' \
+          | while read -r CMD; do
               echo "$CMD"
               eval "$CMD"
             done
