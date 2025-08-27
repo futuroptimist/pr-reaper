@@ -1,0 +1,11 @@
+{
+  "name": "pr-reaper",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "echo 'no lint configured'",
+    "test": "node --test",
+    "test:ci": "node --test"
+  }
+}
