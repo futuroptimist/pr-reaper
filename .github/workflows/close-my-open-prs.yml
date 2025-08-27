@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: "List what would be closed (no changes)"
+        description: "dry_run: when true, list what would be closed without making changes"
         type: boolean
         default: true
       org:
@@ -68,10 +68,25 @@ jobs:
           echo "count=$COUNT" >> $GITHUB_OUTPUT
           echo "Found $COUNT PRs"
 
-      - name: Dry-run listing
+      - name: Announce mode
+        run: |
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            echo "This run is a dry_run=true – no PRs will be closed."
+          else
+            echo "Dry run is disabled (dry_run=false) – closing PRs now."
+          fi
+
+      - name: List PRs and write report
         if: ${{ github.event.inputs.dry_run == 'true' }}
         run: |
-          jq -r '.[] | "\(.url) — \(.title)"' prs.json
+          jq -r '.[] | "- [\(.title)](\(.url))"' prs.json | tee pr-report.md
+
+      - name: Upload PR report
+        if: ${{ github.event.inputs.dry_run == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: dry-run-prs
+          path: pr-report.md
 
       - name: Close PRs
         if: ${{ github.event.inputs.dry_run != 'true' }}
