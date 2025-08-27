@@ -82,7 +82,7 @@ jobs:
         run: |
           gh search issues "${{ steps.q.outputs.q }}" \
             --limit ${{ github.event.inputs.limit }} \
-            --json number,repositoryUrl,title,url,headRefName \
+            --json number,repository,title,url \
             | tee prs.json
           COUNT=$(jq 'length' prs.json)
           echo "Found $COUNT PR(s)"
@@ -99,7 +99,12 @@ jobs:
             else
               echo "Found **$COUNT** open PR(s):"
               echo ""
-              jq -r '.[] | "- [\(.title)](\(.url))  (`\(.repositoryUrl | sub(\"^https://github.com/\"; \"\"))#\(.number)` head=\(.headRefName))"' prs.json
+              jq -r '
+                .[] |
+                "- [\(.title)](\(.url))  (" +
+                (.repository.url | sub("^https://github.com/"; "")) +
+                "#\(.number))"
+              ' prs.json
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -116,7 +121,7 @@ jobs:
             DELETE_FLAG="--delete-branch"
           fi
           COMMENT="${{ github.event.inputs.comment }}"
-          jq -r '.[] | "\(.number)\t\(.repositoryUrl)"' prs.json \
+          jq -r '.[] | "\(.number)\t\(.repository.url)"' prs.json \
           | while IFS=$'\t' read -r NUM REPO_URL; do
               REPO="${REPO_URL#https://github.com/}"
               CMD=(gh pr close "$NUM" --repo "$REPO" --comment "$COMMENT")
