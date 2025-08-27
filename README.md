@@ -13,6 +13,9 @@ This workflow uses the GitHub CLI (`gh`). In Actions, `gh` will authenticate as:
 - Otherwise, it may fall back to `GITHUB_TOKEN` or be unauthenticated. `GITHUB_TOKEN` is only scoped
   to the current repo, so cross-repo searches will return nothing.
 
+If no token is detected or `gh` cannot determine the current user, the workflow fails early with an
+error to avoid silently returning zero results.
+
 Tip: The workflow prints `gh auth status` and `gh api user --jq .login` so you can verify which
 identity `gh` is using.
 
