@@ -1,0 +1,12 @@
+# pr-reaper
+
+> Template for pruning open pull requests across repositories.
+
+## Docs
+- [README.md](README.md) – overview and setup instructions
+- [AGENTS.md](AGENTS.md) – guidance for LLM assistants
+- [codex-custom-instructions.md](docs/codex-custom-instructions.md) – behavior rules
+- [docs/prompts/codex/automation.md](docs/prompts/codex/automation.md) – baseline automation prompt
+
+## Examples
+- [test/](test) – baseline tests to extend
