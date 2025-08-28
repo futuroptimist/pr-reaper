@@ -33,3 +33,15 @@ identity `gh` is using.
   - `title_filter`: only PRs with substring in the title (`gh search prs --search str --match title`)
    - `delete_branch`: also delete the PR source branch
    - `comment`: closing message
+
+## Development
+
+Run the checks locally:
+
+```bash
+npm run lint
+npm run test:ci
+```
+
+CI runs these commands on every push.
+
