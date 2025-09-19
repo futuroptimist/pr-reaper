@@ -139,17 +139,21 @@ jobs:
       - name: Close PRs
         if: ${{ github.event.inputs.dry_run != 'true' && steps.search.outputs.count != '0' }}
         run: |
+          TOTAL="${{ steps.search.outputs.count }}"
           DELETE_FLAG=""
           if [ "${{ github.event.inputs.delete_branch }}" = "true" ]; then
             DELETE_FLAG="--delete-branch"
           fi
           COMMENT="${{ github.event.inputs.comment }}"
-          jq -r '.[] | "\(.number)\t\(.repository.nameWithOwner)"' prs.json \
-          | while IFS=$'\t' read -r NUM REPO; do
+          INDEX=0
+          while IFS=$'\t' read -r NUM REPO; do
+              INDEX=$((INDEX + 1))
+              PCT=$(awk -v i="$INDEX" -v total="$TOTAL" 'BEGIN { printf "%.1f", (i / total) * 100 }')
+              echo "[${INDEX}/${TOTAL} - ${PCT}%] Closing ${REPO}#${NUM}"
               CMD=(gh pr close "$NUM" --repo "$REPO" --comment "$COMMENT")
               if [ -n "$DELETE_FLAG" ]; then
                 CMD+=("$DELETE_FLAG")
               fi
               echo "${CMD[*]}"
               "${CMD[@]}"
-            done
+            done < <(jq -r '.[] | "\(.number)\t\(.repository.nameWithOwner)"' prs.json)
