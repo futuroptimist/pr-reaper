@@ -145,9 +145,8 @@ jobs:
             DELETE_FLAG="--delete-branch"
           fi
           COMMENT="${{ github.event.inputs.comment }}"
-          INDEX=0
+          INDEX=1
           while IFS=$'\t' read -r NUM REPO; do
-              INDEX=$((INDEX + 1))
               PCT=$(awk -v i="$INDEX" -v total="$TOTAL" 'BEGIN { printf "%.1f", (i / total) * 100 }')
               echo "[${INDEX}/${TOTAL} - ${PCT}%] Closing ${REPO}#${NUM}"
               CMD=(gh pr close "$NUM" --repo "$REPO" --comment "$COMMENT")
@@ -156,4 +155,5 @@ jobs:
               fi
               echo "${CMD[*]}"
               "${CMD[@]}"
+              INDEX=$((INDEX + 1))
             done < <(jq -r '.[] | "\(.number)\t\(.repository.nameWithOwner)"' prs.json)

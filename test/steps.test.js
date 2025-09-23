@@ -40,3 +40,42 @@ test('close step outputs owner/repo pairs', () => {
     .trim();
   assert.strictEqual(out, '2\tocto/repo');
 });
+
+test('close step progress starts at 1 of N', () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'pr-reaper-'));
+  const file = join(tmp, 'prs.json');
+  const data = [
+    {
+      number: 7,
+      repository: { nameWithOwner: 'octo/repo' },
+      title: 'Fix A',
+      url: 'https://github.com/octo/repo/pull/7'
+    },
+    {
+      number: 8,
+      repository: { nameWithOwner: 'octo/repo' },
+      title: 'Fix B',
+      url: 'https://github.com/octo/repo/pull/8'
+    }
+  ];
+  writeFileSync(file, JSON.stringify(data));
+  const script = [
+    '#!/usr/bin/env bash',
+    'set -euo pipefail',
+    'TOTAL=2',
+    'INDEX=1',
+    "while IFS=$'\\t' read -r NUM REPO; do",
+    "  PCT=$(awk -v i=\"$INDEX\" -v total=\"$TOTAL\" 'BEGIN { printf \"%.1f\", (i / total) * 100 }')",
+    '  echo "[${INDEX}/${TOTAL} - ${PCT}%] Closing ${REPO}#${NUM}"',
+    '  INDEX=$((INDEX + 1))',
+    `done < <(jq -r '.[] | "\\(.number)\\t\\(.repository.nameWithOwner)"' ${file})`,
+    ''
+  ].join('\n');
+  const scriptPath = join(tmp, 'close.sh');
+  writeFileSync(scriptPath, script);
+  const out = execSync(`bash ${scriptPath}`)
+    .toString()
+    .trim()
+    .split('\n')[0];
+  assert.ok(out.startsWith('[1/2 - '), `expected first progress to start with 1/2, got: ${out}`);
+});
