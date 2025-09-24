@@ -31,7 +31,7 @@ identity `gh` is using.
 4. Optional inputs:
    - `org`: only PRs in a specific org
   - `title_filter`: only PRs with substring in the title (`gh search prs --search str --match title`)
-   - `delete_branch`: also delete the PR source branch
+   - `delete_branch`: also delete the PR source branch (default: true)
    - `comment`: closing message
 
 ## Development
