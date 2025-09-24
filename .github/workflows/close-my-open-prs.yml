@@ -22,7 +22,7 @@ on:
       delete_branch:
         description: "Delete the PR source branch after closing"
         type: boolean
-        default: false
+        default: true
       limit:
         description: "Max PRs to process (1–1000)"
         type: number
