@@ -1,5 +1,9 @@
 # PR Reaper
 
+[![CI][badge-ci]][actions-ci]
+[![Close my open PRs][badge-close-prs]][actions-close-prs]
+[![License: MIT][badge-license]][license]
+
 One-button workflow to close all open pull requests authored by you. Designed for sweeping away
 orphaned or superseded PRs (e.g., from automated Codex runs) in bulk, with a safe dry-run mode
 before reaping begins. `gh search prs` powers the lookup so results match what GitHub shows.
@@ -44,4 +48,15 @@ npm run test:ci
 ```
 
 CI runs these commands on every push.
+
+## License
+
+Licensed under the [MIT License](LICENSE).
+
+[badge-ci]: https://github.com/futuroptimist/pr-reaper/actions/workflows/ci.yml/badge.svg
+[actions-ci]: https://github.com/futuroptimist/pr-reaper/actions/workflows/ci.yml
+[badge-close-prs]: https://github.com/futuroptimist/pr-reaper/actions/workflows/close-my-open-prs.yml/badge.svg
+[actions-close-prs]: https://github.com/futuroptimist/pr-reaper/actions/workflows/close-my-open-prs.yml
+[badge-license]: https://img.shields.io/badge/license-MIT-blue.svg
+[license]: #license
 
