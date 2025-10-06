@@ -1,22 +1,33 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
+import { parse } from 'yaml';
 
-const workflows = [
-  { path: '.github/workflows/ci.yml', name: 'CI' },
-  { path: '.github/workflows/close-my-open-prs.yml', name: 'Close my open PRs' }
-];
+const workflowPath = new URL('../.github/workflows/close-my-open-prs.yml', import.meta.url);
+const workflowSource = readFileSync(workflowPath, 'utf8');
+const permissionsMarker = workflowSource.indexOf('\npermissions:');
+const headerSource = permissionsMarker === -1
+  ? workflowSource
+  : workflowSource.slice(0, permissionsMarker);
+const workflow = parse(headerSource);
 
-for (const { path, name } of workflows) {
-  test(`${name} workflow exposes workflow_dispatch trigger`, () => {
-    const contents = readFileSync(path, 'utf8');
-    const hasDispatch = contents
-      .split(/\r?\n/)
-      .some(line => {
-        const trimmed = line.trim();
-        return trimmed.startsWith('workflow_dispatch:') && !trimmed.startsWith('#');
-      });
+test('close-my-open-prs workflow supports manual dispatch', () => {
+  assert.ok(
+    workflow?.on?.workflow_dispatch,
+    'Expected close-my-open-prs workflow to define workflow_dispatch.'
+  );
+});
 
-    assert.ok(hasDispatch, `${name} workflow must support manual dispatch`);
-  });
-}
+test('close-my-open-prs workflow uses supported input types', () => {
+  const inputs = workflow?.on?.workflow_dispatch?.inputs ?? {};
+  const allowedTypes = new Set(['boolean', 'choice', 'environment', 'string']);
+
+  for (const [name, config] of Object.entries(inputs)) {
+    if (Object.prototype.hasOwnProperty.call(config, 'type')) {
+      assert.ok(
+        allowedTypes.has(config.type),
+        `Unsupported workflow_dispatch input type "${config.type}" for "${name}".`
+      );
+    }
+  }
+});
