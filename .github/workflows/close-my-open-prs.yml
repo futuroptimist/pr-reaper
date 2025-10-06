@@ -53,17 +53,27 @@ jobs:
           echo "gh version:"; gh --version | head -n1 || true
           echo "gh auth status:"; gh auth status || true
 
-          echo "gh api user (login):"
-          LOGIN="$(gh api user --jq .login 2>/dev/null || true)"
-          echo "${LOGIN:-"(none)"}"
-
-          if [ -z "${GH_TOKEN:-}" ]; then
-            echo "::error::GH_TOKEN is not set; add PR_REAPER_TOKEN with repo scope."
+          if [ -n "${GH_TOKEN:-}" ]; then
+            echo "Token source: PR_REAPER_TOKEN via GH_TOKEN"
+          elif [ -n "${GITHUB_TOKEN:-}" ]; then
+            echo "Token source: default GITHUB_TOKEN"
+          else
+            echo "::error::No Actions token detected; set PR_REAPER_TOKEN or enable GITHUB_TOKEN."
             exit 1
           fi
-          if [ -z "${LOGIN:-}" ]; then
-            echo "::error::gh is unauthenticated; check PR_REAPER_TOKEN."
+
+          if ! gh auth status >/dev/null 2>&1; then
+            echo "::error::gh is unauthenticated; set PR_REAPER_TOKEN or check repo settings."
             exit 1
+          fi
+
+          echo "gh api user (login):"
+          LOGIN="$(gh api user --jq .login 2>/dev/null || true)"
+          if [ -n "${LOGIN:-}" ]; then
+            echo "$LOGIN"
+          else
+            echo "(none)"
+            echo "::notice::gh could not determine login; defaulting to github.actor."
           fi
 
           # Case-insensitive header parse; some runners capitalize this header.
@@ -83,16 +93,24 @@ jobs:
           grep -Eiq '(^|[[:space:],])read:org([[:space:],]|$)' <<< "${SCOPES_TRIM:-}" && has_readorg=1 || true
 
           ORG_INPUT="${{ github.event.inputs.org }}"
-          if [ "$has_repo" -ne 1 ]; then
-            echo "::error::GH_TOKEN lacks 'repo' scope; add PR_REAPER_TOKEN with repo scope."
-            exit 1
-          fi
-          if [ -n "$ORG_INPUT" ] && [ "$has_readorg" -ne 1 ]; then
-            echo "::error::GH_TOKEN lacks 'read:org' scope required for org searches."
-            exit 1
-          fi
-          if [ "$has_readorg" -ne 1 ]; then
-            echo "::warning::Could not verify 'read:org'; org PRs may be skipped."
+          if [ -n "${GH_TOKEN:-}" ]; then
+            if [ "$has_repo" -ne 1 ]; then
+              echo "::error::PR_REAPER_TOKEN lacks 'repo' scope."
+              exit 1
+            fi
+            if [ -n "$ORG_INPUT" ] && [ "$has_readorg" -ne 1 ]; then
+              echo "::error::PR_REAPER_TOKEN lacks 'read:org' scope required for org searches."
+              exit 1
+            fi
+            if [ "$has_readorg" -ne 1 ]; then
+              echo "::warning::Could not verify 'read:org'; org PRs may be skipped."
+            fi
+          else
+            if [ -n "$ORG_INPUT" ]; then
+              echo "::error::'org' input requires PR_REAPER_TOKEN with 'read:org' scope."
+              exit 1
+            fi
+            echo "::notice::Using GITHUB_TOKEN; searches are limited to this repository."
           fi
       - name: Search PRs
         # Use gh search prs to match results from GitHub UI.

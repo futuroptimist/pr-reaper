@@ -15,14 +15,17 @@ This workflow uses the GitHub CLI (`gh`). In Actions, `gh` will authenticate as:
 - `GH_TOKEN` if set (recommended) — provide a **Personal Access Token (classic)** with `repo` and
   `read:org`, saved as `PR_REAPER_TOKEN`, exported as `GH_TOKEN` in the job. The workflow fails if
   `repo` scope is missing and warns when `read:org` is absent.
-- Otherwise, it may fall back to `GITHUB_TOKEN` or be unauthenticated. `GITHUB_TOKEN` is only scoped
-  to the current repo, so cross-repo searches will return nothing.
+- Otherwise, it falls back to `GITHUB_TOKEN` with a notice. `GITHUB_TOKEN` is scoped to the current
+  repo only, so cross-repo searches will return nothing.
 
 If you provide the `org` input, the token must include `read:org` scope or the workflow will exit
 early with an error.
 
-If no token is detected, `gh` cannot determine the current user, or `repo` scope is missing, the
-workflow fails early with an error to avoid silently returning zero results.
+If no token is detected, or `GITHUB_TOKEN` has been disabled in repo settings, the workflow fails
+early with an error to avoid silently returning zero results.
+
+When `GITHUB_TOKEN` is used, `gh` may be unable to resolve the user login. The workflow falls back to
+`github.actor` for the author input in that case.
 
 Tip: The workflow prints `gh auth status` and `gh api user --jq .login` so you can verify which
 identity `gh` is using.
