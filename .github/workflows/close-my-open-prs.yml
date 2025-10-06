@@ -31,6 +31,10 @@ on:
         description: "Closing comment"
         type: string
         default: "Closing as superseded by a newer Codex run."
+      exclude_urls:
+        description: "Newline-separated PR URLs to skip (optional)"
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -109,7 +113,24 @@ jobs:
           fi
           echo "Search command: ${CMD[*]}"
           "${CMD[@]}" | tee prs.json
+
+          EXCLUDE_INPUT="${{ github.event.inputs.exclude_urls }}"
+          if [ -n "$EXCLUDE_INPUT" ]; then
+            printf '%s\n' "$EXCLUDE_INPUT" | tr -d '\r' | \
+              jq -R -s 'split("\n") | map(gsub("^[[:space:]]+|[[:space:]]+$"; "")) | map(select(length > 0))' > exclude.json
+            EXCLUDE_COUNT=$(jq 'length' exclude.json)
+            if [ "$EXCLUDE_COUNT" -gt 0 ]; then
+              echo "Excluding $EXCLUDE_COUNT PR URL(s):"
+              jq -r '.[]' exclude.json
+              jq --argfile exclude exclude.json '
+                map(select(.url as $u | ($exclude | index($u)) | not))
+              ' prs.json > filtered.json
+              mv filtered.json prs.json
+            fi
+          fi
+
           COUNT=$(jq 'length' prs.json)
+          rm -f exclude.json filtered.json
           echo "Found $COUNT PR(s)"
           echo "count=$COUNT" >> $GITHUB_OUTPUT
 
