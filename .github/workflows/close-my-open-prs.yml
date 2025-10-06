@@ -138,13 +138,13 @@ jobs:
               echo "Excluding $EXCLUDE_COUNT PR URL(s):"
               jq -r '.[]' exclude.json
               node <<'EOF'
-const { readFileSync, writeFileSync } = require('node:fs');
+  const { readFileSync, writeFileSync } = require('node:fs');
 
-const prs = JSON.parse(readFileSync('prs.json', 'utf8'));
-const exclude = new Set(JSON.parse(readFileSync('exclude.json', 'utf8')));
-const filtered = prs.filter(pr => !exclude.has(pr.url));
+  const prs = JSON.parse(readFileSync('prs.json', 'utf8'));
+  const exclude = new Set(JSON.parse(readFileSync('exclude.json', 'utf8')));
+  const filtered = prs.filter(pr => !exclude.has(pr.url));
 
-writeFileSync('prs.json', JSON.stringify(filtered));
+  writeFileSync('prs.json', JSON.stringify(filtered));
 EOF
             fi
           fi
