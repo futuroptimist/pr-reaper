@@ -25,8 +25,7 @@ on:
         default: true
       limit:
         description: "Max PRs to process (1–1000)"
-        type: number
-        default: 1000
+        default: "1000"
       comment:
         description: "Closing comment"
         type: string
