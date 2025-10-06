@@ -6,7 +6,7 @@ on:
       dry_run:
         description: "dry_run: when true, list what would be closed (no changes)"
         type: boolean
-        default: true
+        default: 'true'
       author:
         description: "GitHub username for author: qualifier (blank → uses github.actor)"
         type: string
@@ -22,7 +22,7 @@ on:
       delete_branch:
         description: "Delete the PR source branch after closing"
         type: boolean
-        default: true
+        default: 'true'
       limit:
         description: "Max PRs to process (1–1000)"
         default: "1000"
