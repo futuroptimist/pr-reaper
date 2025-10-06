@@ -91,4 +91,24 @@ test('close-my-open-prs workflow supports manual dispatch', () => {
 
   assert.ok(foundDispatch, 'workflow_dispatch section not found');
   assert.ok(sawInputsBlock, 'workflow_dispatch inputs block not found');
+
+  const expectedInputs = [
+    'dry_run',
+    'author',
+    'org',
+    'title_filter',
+    'delete_branch',
+    'limit',
+    'comment',
+    'exclude_urls'
+  ];
+
+  for (const inputName of expectedInputs) {
+    const pattern = new RegExp(`\\b${inputName}\\s*:`);
+    assert.match(
+      workflowContent,
+      pattern,
+      `workflow_dispatch input "${inputName}" is required`
+    );
+  }
 });
