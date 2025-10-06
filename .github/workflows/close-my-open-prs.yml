@@ -1,12 +1,11 @@
 name: Close my open PRs
-
 on:
   workflow_dispatch:
     inputs:
       dry_run:
         description: "dry_run: when true, list what would be closed (no changes)"
         type: boolean
-        default: 'true'
+        default: true
       author:
         description: "GitHub username for author: qualifier (blank → uses github.actor)"
         type: string
@@ -22,10 +21,11 @@ on:
       delete_branch:
         description: "Delete the PR source branch after closing"
         type: boolean
-        default: 'true'
+        default: true
       limit:
         description: "Max PRs to process (1–1000)"
-        default: "1000"
+        type: number
+        default: 1000
       comment:
         description: "Closing comment"
         type: string
@@ -34,11 +34,9 @@ on:
         description: "Newline-separated PR URLs to skip (optional)"
         type: string
         default: ""
-
 permissions:
   contents: read
   pull-requests: write
-
 jobs:
   reap:
     runs-on: ubuntu-latest
@@ -137,15 +135,15 @@ jobs:
             if [ "$EXCLUDE_COUNT" -gt 0 ]; then
               echo "Excluding $EXCLUDE_COUNT PR URL(s):"
               jq -r '.[]' exclude.json
-              node <<'EOF'
-  const { readFileSync, writeFileSync } = require('node:fs');
+              node <<'NODE'
+                const { readFileSync, writeFileSync } = require('node:fs');
 
-  const prs = JSON.parse(readFileSync('prs.json', 'utf8'));
-  const exclude = new Set(JSON.parse(readFileSync('exclude.json', 'utf8')));
-  const filtered = prs.filter(pr => !exclude.has(pr.url));
+                const prs = JSON.parse(readFileSync('prs.json', 'utf8'));
+                const exclude = new Set(JSON.parse(readFileSync('exclude.json', 'utf8')));
+                const filtered = prs.filter(pr => !exclude.has(pr.url));
 
-  writeFileSync('prs.json', JSON.stringify(filtered));
-EOF
+                writeFileSync('prs.json', JSON.stringify(filtered));
+              NODE
             fi
           fi
 
@@ -188,13 +186,13 @@ EOF
           COMMENT="${{ github.event.inputs.comment }}"
           INDEX=1
           while IFS=$'\t' read -r NUM REPO; do
-              PCT=$(awk -v i="$INDEX" -v total="$TOTAL" 'BEGIN { printf "%.1f", (i / total) * 100 }')
-              echo "[${INDEX}/${TOTAL} - ${PCT}%] Closing ${REPO}#${NUM}"
-              CMD=(gh pr close "$NUM" --repo "$REPO" --comment "$COMMENT")
-              if [ -n "$DELETE_FLAG" ]; then
-                CMD+=("$DELETE_FLAG")
-              fi
-              echo "${CMD[*]}"
-              "${CMD[@]}"
-              INDEX=$((INDEX + 1))
-            done < <(jq -r '.[] | "\(.number)\t\(.repository.nameWithOwner)"' prs.json)
+            PCT=$(awk -v i="$INDEX" -v total="$TOTAL" 'BEGIN { printf "%.1f", (i / total) * 100 }')
+            echo "[${INDEX}/${TOTAL} - ${PCT}%] Closing ${REPO}#${NUM}"
+            CMD=(gh pr close "$NUM" --repo "$REPO" --comment "$COMMENT")
+            if [ -n "$DELETE_FLAG" ]; then
+              CMD+=("$DELETE_FLAG")
+            fi
+            echo "${CMD[*]}"
+            "${CMD[@]}"
+            INDEX=$((INDEX + 1))
+          done < <(jq -r '.[] | "\(.number)\t\(.repository.nameWithOwner)"' prs.json)
