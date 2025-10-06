@@ -25,7 +25,7 @@ on:
         default: true
       limit:
         description: "Max PRs to process (1–1000)"
-        default: '1000'
+        default: "1000"
       comment:
         description: "Closing comment"
         type: string
@@ -97,12 +97,28 @@ jobs:
         # Use gh search prs to match results from GitHub UI.
         id: search
         run: |
+          LIMIT_INPUT="${{ github.event.inputs.limit }}"
+          if [ -z "$LIMIT_INPUT" ]; then
+            LIMIT_INPUT="1000"
+          fi
+          case "$LIMIT_INPUT" in
+            ''|*[!0-9]*)
+              echo "::error::limit must be an integer between 1 and 1000"
+              exit 1
+              ;;
+          esac
+          if [ "$LIMIT_INPUT" -lt 1 ] || [ "$LIMIT_INPUT" -gt 1000 ]; then
+            echo "::error::limit must be an integer between 1 and 1000"
+            exit 1
+          fi
+          LIMIT="$LIMIT_INPUT"
+
           AUTHOR="${{ github.event.inputs.author }}"
           if [ -z "$AUTHOR" ]; then
             AUTHOR="${{ github.actor }}"
           fi
           CMD=(gh search prs --author "$AUTHOR" --state open \
-            --limit ${{ github.event.inputs.limit }} \
+            --limit "$LIMIT" \
             --json number,repository,title,url)
           if [ -n "${{ github.event.inputs.org }}" ]; then
             CMD+=(--owner "${{ github.event.inputs.org }}")
