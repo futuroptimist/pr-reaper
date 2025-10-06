@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
 import { execSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -78,4 +78,43 @@ test('close step progress starts at 1 of N', () => {
     .trim()
     .split('\n')[0];
   assert.ok(out.startsWith('[1/2 - '), `expected first progress to start with 1/2, got: ${out}`);
+});
+
+test('exclude list filtering mirrors workflow script', () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'pr-reaper-'));
+  const prsFile = join(tmp, 'prs.json');
+  const excludeFile = join(tmp, 'exclude.json');
+  const prs = [
+    {
+      number: 1,
+      repository: { nameWithOwner: 'octo/repo' },
+      title: 'Keep me',
+      url: 'https://github.com/octo/repo/pull/1'
+    },
+    {
+      number: 2,
+      repository: { nameWithOwner: 'octo/repo' },
+      title: 'Drop me',
+      url: 'https://github.com/octo/repo/pull/2'
+    }
+  ];
+  const exclude = ['https://github.com/octo/repo/pull/2'];
+  writeFileSync(prsFile, JSON.stringify(prs));
+  writeFileSync(excludeFile, JSON.stringify(exclude));
+
+  execSync(
+    `node <<'EOF'
+const { readFileSync, writeFileSync } = require('node:fs');
+
+const prs = JSON.parse(readFileSync('prs.json', 'utf8'));
+const exclude = new Set(JSON.parse(readFileSync('exclude.json', 'utf8')));
+const filtered = prs.filter(pr => !exclude.has(pr.url));
+
+writeFileSync('prs.json', JSON.stringify(filtered));
+EOF`,
+    { cwd: tmp }
+  );
+
+  const filtered = JSON.parse(readFileSync(prsFile, 'utf8'));
+  assert.deepStrictEqual(filtered, [prs[0]]);
 });
