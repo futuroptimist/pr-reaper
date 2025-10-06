@@ -82,7 +82,7 @@ jobs:
           grep -Eiq '(^|[[:space:],])repo([[:space:],]|$)' <<< "${SCOPES_TRIM:-}" && has_repo=1 || true
           grep -Eiq '(^|[[:space:],])read:org([[:space:],]|$)' <<< "${SCOPES_TRIM:-}" && has_readorg=1 || true
 
-          ORG_INPUT="${{ github.event.inputs.org }}"
+          ORG_INPUT="${{ inputs.org }}"
           if [ "$has_repo" -ne 1 ]; then
             echo "::error::GH_TOKEN lacks 'repo' scope; add PR_REAPER_TOKEN with repo scope."
             exit 1
@@ -98,23 +98,23 @@ jobs:
         # Use gh search prs to match results from GitHub UI.
         id: search
         run: |
-          AUTHOR="${{ github.event.inputs.author }}"
+          AUTHOR="${{ inputs.author }}"
           if [ -z "$AUTHOR" ]; then
             AUTHOR="${{ github.actor }}"
           fi
           CMD=(gh search prs --author "$AUTHOR" --state open \
-            --limit ${{ github.event.inputs.limit }} \
+            --limit ${{ inputs.limit }} \
             --json number,repository,title,url)
-          if [ -n "${{ github.event.inputs.org }}" ]; then
-            CMD+=(--owner "${{ github.event.inputs.org }}")
+          if [ -n "${{ inputs.org }}" ]; then
+            CMD+=(--owner "${{ inputs.org }}")
           fi
-          if [ -n "${{ github.event.inputs.title_filter }}" ]; then
-            CMD+=(--search "${{ github.event.inputs.title_filter }}" --match title)
+          if [ -n "${{ inputs.title_filter }}" ]; then
+            CMD+=(--search "${{ inputs.title_filter }}" --match title)
           fi
           echo "Search command: ${CMD[*]}"
           "${CMD[@]}" | tee prs.json
 
-          EXCLUDE_INPUT="${{ github.event.inputs.exclude_urls }}"
+          EXCLUDE_INPUT="${{ inputs.exclude_urls }}"
           if [ -n "$EXCLUDE_INPUT" ]; then
             printf '%s\n' "$EXCLUDE_INPUT" | tr -d '\r' | \
               jq -R -s 'split("\n") | map(gsub("^[[:space:]]+|[[:space:]]+$"; "")) | map(select(length > 0))' > exclude.json
@@ -158,19 +158,19 @@ EOF
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Dry-run listing
-        if: ${{ github.event.inputs.dry_run == 'true' }}
+        if: ${{ inputs.dry_run }}
         run: |
           jq -r '.[] | "\(.url) — \(.title)"' prs.json
 
       - name: Close PRs
-        if: ${{ github.event.inputs.dry_run != 'true' && steps.search.outputs.count != '0' }}
+        if: ${{ !inputs.dry_run && steps.search.outputs.count != '0' }}
         run: |
           TOTAL="${{ steps.search.outputs.count }}"
           DELETE_FLAG=""
-          if [ "${{ github.event.inputs.delete_branch }}" = "true" ]; then
+          if [ "${{ inputs.delete_branch }}" = "true" ]; then
             DELETE_FLAG="--delete-branch"
           fi
-          COMMENT="${{ github.event.inputs.comment }}"
+          COMMENT="${{ inputs.comment }}"
           INDEX=1
           while IFS=$'\t' read -r NUM REPO; do
               PCT=$(awk -v i="$INDEX" -v total="$TOTAL" 'BEGIN { printf "%.1f", (i / total) * 100 }')
