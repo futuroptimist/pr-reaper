@@ -45,7 +45,7 @@ jobs:
     runs-on: ubuntu-latest
     # Prefer a user PAT if provided. If PR_REAPER_TOKEN is not set, gh will likely use GITHUB_TOKEN (repo-scoped) or be unauthenticated.
     env:
-      GH_TOKEN: ${{ secrets.PR_REAPER_TOKEN }}
+      GH_TOKEN: ${{ secrets.PR_REAPER_TOKEN != '' && secrets.PR_REAPER_TOKEN || github.token }}
     steps:
       - name: Show auth identity
         run: |
