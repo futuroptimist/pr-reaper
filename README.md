@@ -34,9 +34,10 @@ identity `gh` is using.
 3. When happy, re-run with **dry_run=false**.
 4. Optional inputs:
    - `org`: only PRs in a specific org
-  - `title_filter`: only PRs with substring in the title (`gh search prs --search str --match title`)
+   - `title_filter`: only PRs with substring in the title (`gh search prs --search str --match title`)
    - `delete_branch`: also delete the PR source branch (default: true)
    - `comment`: closing message
+   - `exclude_urls`: newline-separated PR URLs to skip (paste a shortlist of active PRs)
 
 ## Development
 
