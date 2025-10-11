@@ -130,13 +130,13 @@ jobs:
           EXCLUDE_INPUT="${{ github.event.inputs.exclude_urls }}"
           if [ -n "$EXCLUDE_INPUT" ]; then
             printf '%s\n' "$EXCLUDE_INPUT" | python3 - <<'PY' > exclude.json
-import json
-import re
-import sys
+            import json
+            import re
+            import sys
 
-data = sys.stdin.read().replace('\r', '\n')
-parts = [part.strip() for part in re.split(r'[\s,;|]+', data) if part.strip()]
-json.dump(parts, sys.stdout)
+            data = sys.stdin.read().replace('\r', '\n')
+            parts = [part.strip() for part in re.split(r'[\s,;|]+', data) if part.strip()]
+            json.dump(parts, sys.stdout)
 PY
             EXCLUDE_COUNT=$(jq 'length' exclude.json)
             if [ "$EXCLUDE_COUNT" -gt 0 ]; then
