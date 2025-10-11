@@ -31,7 +31,7 @@ on:
         type: string
         default: "Closing as superseded by a newer Codex run."
       exclude_urls:
-        description: "Newline-separated PR URLs to skip (optional)"
+        description: "PR URLs to skip (space/comma/newline separated, optional)"
         type: string
         default: ""
 permissions:
@@ -129,8 +129,15 @@ jobs:
 
           EXCLUDE_INPUT="${{ github.event.inputs.exclude_urls }}"
           if [ -n "$EXCLUDE_INPUT" ]; then
-            printf '%s\n' "$EXCLUDE_INPUT" | tr -d '\r' | \
-              jq -R -s 'split("\n") | map(gsub("^[[:space:]]+|[[:space:]]+$"; "")) | map(select(length > 0))' > exclude.json
+            printf '%s\n' "$EXCLUDE_INPUT" | python3 - <<'PY' > exclude.json
+import json
+import re
+import sys
+
+data = sys.stdin.read().replace('\r', '\n')
+parts = [part.strip() for part in re.split(r'[\s,;|]+', data) if part.strip()]
+json.dump(parts, sys.stdout)
+PY
             EXCLUDE_COUNT=$(jq 'length' exclude.json)
             if [ "$EXCLUDE_COUNT" -gt 0 ]; then
               echo "Excluding $EXCLUDE_COUNT PR URL(s):"
