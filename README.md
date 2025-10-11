@@ -37,7 +37,7 @@ identity `gh` is using.
    - `title_filter`: only PRs with substring in the title (`gh search prs --search str --match title`)
    - `delete_branch`: also delete the PR source branch (default: true)
    - `comment`: closing message
-   - `exclude_urls`: newline-separated PR URLs to skip (paste a shortlist of active PRs)
+  - `exclude_urls`: PR URLs to skip (accepts spaces, commas, semicolons, pipes, or newlines)
 
 ## Development
 
