@@ -121,7 +121,7 @@ jobs:
 
           CMD=(gh search prs --author "$AUTHOR" --state open \
                --limit "$LIMIT" \
-               --json number,repository,title,url)
+               --json number,permalink,repository,title,url)
           if [ -n "${{ github.event.inputs.org }}" ]; then
             CMD+=(--owner "${{ github.event.inputs.org }}")
           fi
@@ -133,27 +133,151 @@ jobs:
 
           EXCLUDE_INPUT="${{ github.event.inputs.exclude_urls }}"
           if [ -n "$EXCLUDE_INPUT" ]; then
-            printf '%s\n' "$EXCLUDE_INPUT" | python3 - <<'PY' > exclude.json
-          import json
-          import re
-          import sys
-          data = sys.stdin.read().replace('\r', '\n')
-          parts = [part.strip() for part in re.split(r'[\s,;|]+', data) if part.strip()]
-          json.dump(parts, sys.stdout)
-          PY
-            EXCLUDE_COUNT=$(jq 'length' exclude.json)
-            if [ "$EXCLUDE_COUNT" -gt 0 ]; then
-              echo "Excluding $EXCLUDE_COUNT PR URL(s):"
-              jq -r '.[]' exclude.json
-              jq --slurpfile exclude exclude.json '
-                map(select(.url as $url | ($exclude[0] | index($url)) | not))
-              ' prs.json > filtered.json
-              mv filtered.json prs.json
-            fi
+            EXCLUDE_INPUT_DATA="$EXCLUDE_INPUT" python3 - <<'PY'
+import json
+import os
+import re
+import sys
+from urllib.parse import urlparse
+
+RAW_INPUT = os.environ.get('EXCLUDE_INPUT_DATA', '').replace('\r', '\n')
+TOKENS = [part.strip() for part in re.split(r'[\s,;|]+', RAW_INPUT) if part.strip()]
+
+if not TOKENS:
+    sys.exit(0)
+
+print(f"Excluding {len(TOKENS)} PR reference(s) from input:")
+for token in TOKENS:
+    print(f"  - {token}")
+
+with open('prs.json', 'r', encoding='utf-8') as prs_file:
+    prs = json.load(prs_file)
+
+
+def normalize_repo(owner, repo, number, extra_hosts=None):
+    number_str = str(int(number, 10))
+    owner_lower = owner.lower()
+    repo_lower = repo.lower()
+    owner_repo = f"{owner_lower}/{repo_lower}"
+    refs = {
+        f"{owner_repo}#{number_str}",
+        f"{owner_repo}/pull/{number_str}",
+        f"{owner_repo}/pulls/{number_str}",
+        f"https://github.com/{owner_repo}/pull/{number_str}",
+        f"https://github.com/{owner_repo}/pulls/{number_str}",
+        f"https://api.github.com/repos/{owner_repo}/pulls/{number_str}",
+    }
+    if extra_hosts:
+        for host in extra_hosts:
+            base = host.rstrip('/')
+            refs.add(f"{base}/repos/{owner_repo}/pulls/{number_str}")
+    return refs
+
+
+def parse_owner_repo_number(value):
+    text = value.strip()
+    if not text:
+        return None
+
+    match = re.fullmatch(r'([^/\s]+)/([^#\s]+)#(\d+)', text, flags=re.IGNORECASE)
+    if match:
+        owner, repo, number = match.groups()
+        return owner.lower(), repo.lower(), number
+
+    match = re.fullmatch(r'([^/\s]+)/([^/\s]+)/pulls?/(\d+)', text, flags=re.IGNORECASE)
+    if match:
+        owner, repo, number = match.groups()
+        return owner.lower(), repo.lower(), number
+
+    if '://' in text:
+        try:
+            parsed = urlparse(text)
+        except ValueError:
+            return None
+        segments = [segment for segment in parsed.path.split('/') if segment]
+        if len(segments) >= 4:
+            marker = segments[-2].lower()
+            number = segments[-1]
+            if number.isdigit():
+                if marker == 'pull' and len(segments) >= 4:
+                    owner, repo = segments[-4], segments[-3]
+                    return owner.lower(), repo.lower(), number
+                if marker == 'pulls' and len(segments) >= 5:
+                    owner, repo = segments[-4], segments[-3]
+                    return owner.lower(), repo.lower(), number
+
+    return None
+
+
+exclude_refs = set()
+for token in TOKENS:
+    lowered = token.strip().lower()
+    if lowered:
+        exclude_refs.add(lowered)
+    parsed = parse_owner_repo_number(token)
+    if parsed:
+        owner, repo, number = parsed
+        exclude_refs.update(normalize_repo(owner, repo, number))
+
+
+def pr_references(pr):
+    refs = set()
+    repo = pr.get('repository', {}).get('nameWithOwner')
+    number = pr.get('number')
+
+    if isinstance(number, int):
+        number_str = str(number)
+    elif isinstance(number, str) and number.strip():
+        number_str = str(int(number.strip(), 10))
+    else:
+        number_str = None
+
+    extra_hosts = set()
+    for key in ('url', 'permalink', 'html_url'):
+        value = pr.get(key)
+        if isinstance(value, str) and value:
+            refs.add(value.lower())
+            if number_str and repo and '://' in value:
+                try:
+                    parsed = urlparse(value)
+                except ValueError:
+                    parsed = None
+                if parsed:
+                    base = f"{parsed.scheme}://{parsed.netloc}".lower()
+                    extra_hosts.add(base)
+
+    if repo and number_str and '/' in repo:
+        owner, repo_name = repo.split('/', 1)
+        refs.update(normalize_repo(owner, repo_name, number_str, extra_hosts=extra_hosts))
+
+    return refs
+
+
+remaining = []
+skipped = []
+for pr in prs:
+    refs = pr_references(pr)
+    if refs & exclude_refs:
+        skipped.append(pr)
+    else:
+        remaining.append(pr)
+
+with open('prs.json', 'w', encoding='utf-8') as prs_file:
+    json.dump(remaining, prs_file)
+
+if skipped:
+    print(f"Skipped {len(skipped)} PR(s) that matched the exclusion list:")
+    for pr in skipped:
+        repo = pr.get('repository', {}).get('nameWithOwner', '(unknown)')
+        number = pr.get('number', '?')
+        title = pr.get('title', '')
+        print(f"  - {repo}#{number} — {title}")
+else:
+    print('No PRs matched the exclusion list.')
+PY
           fi
 
           COUNT=$(jq 'length' prs.json)
-          rm -f exclude.json filtered.json || true
           echo "Found $COUNT PR(s)"
           echo "count=$COUNT" >> "$GITHUB_OUTPUT"
 

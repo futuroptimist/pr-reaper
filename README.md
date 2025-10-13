@@ -37,7 +37,9 @@ identity `gh` is using.
    - `title_filter`: only PRs with substring in the title (`gh search prs --search str --match title`)
    - `delete_branch`: also delete the PR source branch (default: true)
    - `comment`: closing message
-  - `exclude_urls`: PR URLs to skip (accepts spaces, commas, semicolons, pipes, or newlines)
+  - `exclude_urls`: PR references to skip (accepts spaces, commas, semicolons, pipes, or newlines).
+    Supports HTML URLs (e.g., `https://github.com/owner/repo/pull/123`), API URLs, or `owner/repo#123`
+    shorthands.
 
 ## Development
 
