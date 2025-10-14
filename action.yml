@@ -1,0 +1,45 @@
+name: 'PR Reaper'
+description: 'Search and optionally close stale pull requests opened by a user.'
+author: 'pr-reaper maintainers'
+branding:
+  icon: 'trash'
+  color: 'green'
+inputs:
+  dry_run:
+    description: 'dry_run: when true, list what would be closed (no changes)'
+    required: false
+    default: 'true'
+  author:
+    description: 'GitHub username for author: qualifier (blank → uses github.actor)'
+    required: false
+    default: ''
+  org:
+    description: 'Limit to an org (optional, e.g. democratizedspace)'
+    required: false
+    default: ''
+  title_filter:
+    description: 'Substring to match in PR title (optional, e.g. Codex)'
+    required: false
+    default: ''
+  delete_branch:
+    description: 'Delete the PR source branch after closing'
+    required: false
+    default: 'true'
+  limit:
+    description: 'Max PRs to process (1–1000)'
+    required: false
+    default: '1000'
+  comment:
+    description: 'Closing comment'
+    required: false
+    default: 'Closing as superseded by a newer Codex run.'
+  exclude_urls:
+    description: 'PR URLs to skip (space/comma/newline separated, optional)'
+    required: false
+    default: ''
+outputs:
+  count:
+    description: 'Number of pull requests matched after filtering.'
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
