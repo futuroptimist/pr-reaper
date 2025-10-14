@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540" role="img" aria-labelledby="title desc">
+  <title id="title">GitHub Actions run workflow UI (illustrative)</title>
+  <desc id="desc">Mocked interface showing the Run workflow dialog with inputs for the PR Reaper action.</desc>
+  <rect width="960" height="540" fill="#0d1117" rx="24" ry="24" />
+  <rect x="60" y="60" width="840" height="420" rx="16" ry="16" fill="#161b22" stroke="#30363d" stroke-width="2" />
+  <text x="100" y="120" fill="#e6edf3" font-family="'Segoe UI', sans-serif" font-size="28" font-weight="600">Run workflow</text>
+  <text x="100" y="160" fill="#7d8590" font-family="'Segoe UI', sans-serif" font-size="20">Choose the inputs for PR Reaper before launching a run.</text>
+  <rect x="100" y="200" width="340" height="56" rx="10" ry="10" fill="#0d1117" stroke="#30363d" stroke-width="2" />
+  <text x="120" y="232" fill="#7d8590" font-family="'Segoe UI', sans-serif" font-size="18">dry_run</text>
+  <text x="120" y="252" fill="#e6edf3" font-family="'Segoe UI', sans-serif" font-size="18">true ▾</text>
+  <rect x="460" y="200" width="340" height="56" rx="10" ry="10" fill="#0d1117" stroke="#30363d" stroke-width="2" />
+  <text x="480" y="232" fill="#7d8590" font-family="'Segoe UI', sans-serif" font-size="18">delete_branch</text>
+  <text x="480" y="252" fill="#e6edf3" font-family="'Segoe UI', sans-serif" font-size="18">true ▾</text>
+  <rect x="100" y="280" width="700" height="56" rx="10" ry="10" fill="#0d1117" stroke="#30363d" stroke-width="2" />
+  <text x="120" y="312" fill="#7d8590" font-family="'Segoe UI', sans-serif" font-size="18">title_filter</text>
+  <text x="120" y="332" fill="#e6edf3" font-family="'Segoe UI', sans-serif" font-size="18">Codex</text>
+  <rect x="100" y="360" width="700" height="64" rx="12" ry="12" fill="#238636" />
+  <text x="270" y="402" fill="#ffffff" font-family="'Segoe UI', sans-serif" font-size="24" font-weight="600">Run workflow</text>
+</svg>
