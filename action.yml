@@ -40,6 +40,16 @@ inputs:
 outputs:
   count:
     description: 'Number of pull requests matched after filtering.'
+    value: ${{ steps.run.outputs.count }}
 runs:
-  using: 'node20'
-  main: 'dist/index.js'
+  using: 'composite'
+  steps:
+    - name: Install action dependencies
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: npm install --omit=dev
+    - name: Run pr-reaper
+      id: run
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: node dist/index.js
