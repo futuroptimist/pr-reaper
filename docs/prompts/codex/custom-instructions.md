@@ -43,4 +43,5 @@ Feature | Fix | Refactor | Docs | Chore
 
 # Output discipline
 - When asked for code or diffs, emit exactly one fenced block in the requested language.
-- For diffs, use a unified `diff` block and avoid extra headings, "Copy" text, or multiple code fences.
+- For diffs, use a unified `diff` block and avoid extra headings, "Copy" text, or multiple code
+  fences.
