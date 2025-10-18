@@ -24,13 +24,15 @@ export interface SearchOptions {
 
 export interface PullRequest {
   number: number;
-  permalink: string;
+  permalink?: string | null;
   repository: { nameWithOwner: string };
   title: string;
   url: string;
 }
 
 export class GhCli {
+  private supportsPermalinkField: boolean | null = null;
+
   constructor(private readonly options: GhExecOptions = {}) {}
 
   private async exec(args: string[]): Promise<{ stdout: string; stderr: string }> {
@@ -122,7 +124,7 @@ export class GhCli {
   }
 
   async searchPullRequests(options: SearchOptions): Promise<PullRequest[]> {
-    const args = [
+    const baseArgs = [
       'search',
       'prs',
       '--author',
@@ -130,19 +132,39 @@ export class GhCli {
       '--state',
       'open',
       '--limit',
-      String(options.limit),
-      '--json',
-      'number,permalink,repository,title,url'
+      String(options.limit)
     ];
 
     if (options.org) {
-      args.push('--owner', options.org);
+      baseArgs.push('--owner', options.org);
     }
     if (options.titleFilter) {
-      args.push('--search', options.titleFilter, '--match', 'title');
+      baseArgs.push('--search', options.titleFilter, '--match', 'title');
     }
 
-    const { stdout } = await this.exec(args);
+    const fields = ['number', 'repository', 'title', 'url'];
+
+    if (this.supportsPermalinkField !== false) {
+      const argsWithPermalink = [...baseArgs, '--json', [...fields, 'permalink'].join(',')];
+      try {
+        const { stdout } = await this.exec(argsWithPermalink);
+        this.supportsPermalinkField = true;
+        return JSON.parse(stdout) as PullRequest[];
+      } catch (error) {
+        if (
+          error instanceof GhError &&
+          typeof error.stderr === 'string' &&
+          /Unknown JSON field: "permalink"/i.test(error.stderr)
+        ) {
+          this.supportsPermalinkField = false;
+        } else {
+          throw error;
+        }
+      }
+    }
+
+    const fallbackArgs = [...baseArgs, '--json', fields.join(',')];
+    const { stdout } = await this.exec(fallbackArgs);
     const results = JSON.parse(stdout) as PullRequest[];
     return results;
   }
