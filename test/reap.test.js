@@ -122,7 +122,11 @@ test('runReaper uploads dry-run artifacts and never closes PRs', async () => {
     inputs: { ...baseConfig, dryRun: true },
     gh,
     workspace,
-    artifactClient
+    artifactClient,
+    env: {
+      ACTIONS_RUNTIME_TOKEN: 'token',
+      ACTIONS_RUNTIME_URL: 'https://example.com'
+    }
   });
 
   assert.deepStrictEqual(gh.closed, []);
@@ -145,6 +149,37 @@ test('runReaper uploads dry-run artifacts and never closes PRs', async () => {
   assert.ok(summaryFile, 'GITHUB_STEP_SUMMARY should be set');
   const summaryContents = readFileSync(summaryFile, 'utf8');
   assert.match(summaryContents, /Found \*\*1\*\* open pull request/);
+});
+
+test('runReaper skips artifact upload when runtime env is missing', async () => {
+  const prs = [
+    {
+      number: 101,
+      permalink: 'https://github.com/octo/repo/pull/101',
+      repository: { nameWithOwner: 'octo/repo' },
+      title: 'Tokenless run',
+      url: 'https://github.com/octo/repo/pull/101'
+    }
+  ];
+  const gh = new FakeGh({ prs });
+  const workspace = createWorkspace();
+  const uploads = [];
+  const artifactClient = {
+    async uploadArtifact(name, files, rootDirectory) {
+      uploads.push({ name, files, rootDirectory });
+      return {};
+    }
+  };
+
+  await runReaper({
+    inputs: { ...baseConfig, dryRun: true },
+    gh,
+    workspace,
+    artifactClient,
+    env: {}
+  });
+
+  assert.deepStrictEqual(uploads, []);
 });
 
 test('runReaper closes PRs when not in dry run', async () => {

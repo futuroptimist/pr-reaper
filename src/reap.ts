@@ -21,6 +21,20 @@ function toLogger(consoleLike: Console): Logger {
   };
 }
 
+function hasArtifactRuntimeEnv(env: NodeJS.ProcessEnv): boolean {
+  const token = env.ACTIONS_RUNTIME_TOKEN?.trim();
+  const url = env.ACTIONS_RUNTIME_URL?.trim();
+  return Boolean(token && url);
+}
+
+function isMissingArtifactRuntimeError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message.toLowerCase();
+  return message.includes('actions_runtime_token') || message.includes('actions_runtime_url');
+}
+
 function hasScope(scopes: Set<string>, name: string): boolean {
   const target = name.toLowerCase();
   for (const scope of scopes) {
@@ -137,6 +151,7 @@ export interface RunOptions {
   workspace?: string;
   console?: Console;
   artifactClient?: ArtifactClient;
+  env?: NodeJS.ProcessEnv;
 }
 
 export async function runReaper(options: RunOptions): Promise<void> {
@@ -144,6 +159,7 @@ export async function runReaper(options: RunOptions): Promise<void> {
   const logger = toLogger(options.console ?? console);
   const { inputs, gh } = options;
   const artifactClient = options.artifactClient ?? new DefaultArtifactClient();
+  const env = options.env ?? process.env;
 
   const ghVersion = await gh.version().catch(() => null);
   if (ghVersion) {
@@ -193,7 +209,21 @@ export async function runReaper(options: RunOptions): Promise<void> {
   core.setOutput('count', String(remaining.length));
 
   if (inputs.dryRun) {
-    await uploadDryRunArtifacts(remaining, workspace, artifactClient);
+    if (!hasArtifactRuntimeEnv(env)) {
+      logger.warn(
+        'ACTIONS_RUNTIME_TOKEN/ACTIONS_RUNTIME_URL are unavailable; skipping dry-run artifact upload.'
+      );
+      return;
+    }
+    try {
+      await uploadDryRunArtifacts(remaining, workspace, artifactClient);
+    } catch (error) {
+      if (isMissingArtifactRuntimeError(error)) {
+        logger.warn('Artifact runtime credentials missing; skipping dry-run artifact upload.');
+        return;
+      }
+      throw error;
+    }
     return;
   }
 
