@@ -52,4 +52,13 @@ runs:
       id: run
       shell: bash
       working-directory: ${{ github.action_path }}
+      env:
+        INPUT_DRY_RUN: ${{ inputs.dry_run }}
+        INPUT_AUTHOR: ${{ inputs.author }}
+        INPUT_ORG: ${{ inputs.org }}
+        INPUT_TITLE_FILTER: ${{ inputs.title_filter }}
+        INPUT_DELETE_BRANCH: ${{ inputs.delete_branch }}
+        INPUT_LIMIT: ${{ inputs.limit }}
+        INPUT_COMMENT: ${{ inputs.comment }}
+        INPUT_EXCLUDE_URLS: ${{ inputs.exclude_urls }}
       run: node dist/index.js

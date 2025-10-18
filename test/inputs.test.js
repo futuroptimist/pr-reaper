@@ -29,6 +29,17 @@ test('parseInputs falls back to actor when author is blank', () => {
   assert.strictEqual(config.dryRun, true);
 });
 
+test('parseInputs respects explicit false booleans', () => {
+  const inputs = {
+    ...baseInputs,
+    dry_run: 'false',
+    delete_branch: 'false'
+  };
+  const { config } = parseInputs(readerFactory(inputs), baseEnv);
+  assert.strictEqual(config.dryRun, false);
+  assert.strictEqual(config.deleteBranch, false);
+});
+
 test('parseInputs throws when limit is out of range', () => {
   const inputs = { ...baseInputs, limit: '2000' };
   assert.throws(
