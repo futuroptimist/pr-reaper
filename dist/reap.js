@@ -10,6 +10,18 @@ function toLogger(consoleLike) {
         error: (message) => consoleLike.error(message)
     };
 }
+function hasArtifactRuntimeEnv(env) {
+    const token = env.ACTIONS_RUNTIME_TOKEN?.trim();
+    const url = env.ACTIONS_RUNTIME_URL?.trim();
+    return Boolean(token && url);
+}
+function isMissingArtifactRuntimeError(error) {
+    if (!(error instanceof Error)) {
+        return false;
+    }
+    const message = error.message.toLowerCase();
+    return message.includes('actions_runtime_token') || message.includes('actions_runtime_url');
+}
 function hasScope(scopes, name) {
     const target = name.toLowerCase();
     for (const scope of scopes) {
@@ -107,6 +119,7 @@ export async function runReaper(options) {
     const logger = toLogger(options.console ?? console);
     const { inputs, gh } = options;
     const artifactClient = options.artifactClient ?? new DefaultArtifactClient();
+    const env = options.env ?? process.env;
     const ghVersion = await gh.version().catch(() => null);
     if (ghVersion) {
         logger.info(`gh version: ${ghVersion}`);
@@ -145,7 +158,20 @@ export async function runReaper(options) {
     await writeSummary(remaining, skipped);
     core.setOutput('count', String(remaining.length));
     if (inputs.dryRun) {
-        await uploadDryRunArtifacts(remaining, workspace, artifactClient);
+        if (!hasArtifactRuntimeEnv(env)) {
+            logger.warn('ACTIONS_RUNTIME_TOKEN/ACTIONS_RUNTIME_URL are unavailable; skipping dry-run artifact upload.');
+            return;
+        }
+        try {
+            await uploadDryRunArtifacts(remaining, workspace, artifactClient);
+        }
+        catch (error) {
+            if (isMissingArtifactRuntimeError(error)) {
+                logger.warn('Artifact runtime credentials missing; skipping dry-run artifact upload.');
+                return;
+            }
+            throw error;
+        }
         return;
     }
     if (remaining.length === 0) {
