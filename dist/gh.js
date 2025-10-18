@@ -11,6 +11,20 @@ export class GhError extends Error {
         this.name = 'GhError';
     }
 }
+function normalizePullRequests(results) {
+    return results.map((pr) => ({
+        ...pr,
+        permalink: typeof pr.permalink === 'string' && pr.permalink ? pr.permalink : pr.url
+    }));
+}
+function isUnknownJsonFieldError(error, field) {
+    if (error instanceof GhError) {
+        const haystack = `${error.message}\n${error.stderr}`.toLowerCase();
+        return (haystack.includes('unknown json field') &&
+            haystack.includes(`"${field.toLowerCase()}"`));
+    }
+    return false;
+}
 export class GhCli {
     options;
     constructor(options = {}) {
@@ -96,7 +110,7 @@ export class GhCli {
         return scopes;
     }
     async searchPullRequests(options) {
-        const args = [
+        const baseArgs = [
             'search',
             'prs',
             '--author',
@@ -104,19 +118,29 @@ export class GhCli {
             '--state',
             'open',
             '--limit',
-            String(options.limit),
-            '--json',
-            'number,permalink,repository,title,url'
+            String(options.limit)
         ];
         if (options.org) {
-            args.push('--owner', options.org);
+            baseArgs.push('--owner', options.org);
         }
         if (options.titleFilter) {
-            args.push('--search', options.titleFilter, '--match', 'title');
+            baseArgs.push('--search', options.titleFilter, '--match', 'title');
         }
-        const { stdout } = await this.exec(args);
-        const results = JSON.parse(stdout);
-        return results;
+        const jsonArgs = [...baseArgs, '--json', 'number,permalink,repository,title,url'];
+        try {
+            const { stdout } = await this.exec(jsonArgs);
+            const results = JSON.parse(stdout);
+            return normalizePullRequests(results);
+        }
+        catch (error) {
+            if (isUnknownJsonFieldError(error, 'permalink')) {
+                const fallbackArgs = [...baseArgs, '--json', 'number,repository,title,url'];
+                const { stdout } = await this.exec(fallbackArgs);
+                const results = JSON.parse(stdout);
+                return normalizePullRequests(results);
+            }
+            throw error;
+        }
     }
     async closePullRequest(repository, number, comment, deleteBranch) {
         const args = ['pr', 'close', String(number), '--repo', repository, '--comment', comment];

@@ -30,6 +30,27 @@ export interface PullRequest {
   url: string;
 }
 
+type PullRequestLike = Omit<PullRequest, 'permalink'> & { permalink?: string | null | undefined };
+
+function normalizePullRequests(results: PullRequestLike[]): PullRequest[] {
+  return results.map((pr) => ({
+    ...pr,
+    permalink:
+      typeof pr.permalink === 'string' && pr.permalink ? pr.permalink : pr.url
+  }));
+}
+
+function isUnknownJsonFieldError(error: unknown, field: string): error is GhError {
+  if (error instanceof GhError) {
+    const haystack = `${error.message}\n${error.stderr}`.toLowerCase();
+    return (
+      haystack.includes('unknown json field') &&
+      haystack.includes(`"${field.toLowerCase()}"`)
+    );
+  }
+  return false;
+}
+
 export class GhCli {
   constructor(private readonly options: GhExecOptions = {}) {}
 
@@ -122,7 +143,7 @@ export class GhCli {
   }
 
   async searchPullRequests(options: SearchOptions): Promise<PullRequest[]> {
-    const args = [
+    const baseArgs = [
       'search',
       'prs',
       '--author',
@@ -130,21 +151,31 @@ export class GhCli {
       '--state',
       'open',
       '--limit',
-      String(options.limit),
-      '--json',
-      'number,permalink,repository,title,url'
+      String(options.limit)
     ];
 
     if (options.org) {
-      args.push('--owner', options.org);
+      baseArgs.push('--owner', options.org);
     }
     if (options.titleFilter) {
-      args.push('--search', options.titleFilter, '--match', 'title');
+      baseArgs.push('--search', options.titleFilter, '--match', 'title');
     }
 
-    const { stdout } = await this.exec(args);
-    const results = JSON.parse(stdout) as PullRequest[];
-    return results;
+    const jsonArgs = [...baseArgs, '--json', 'number,permalink,repository,title,url'];
+
+    try {
+      const { stdout } = await this.exec(jsonArgs);
+      const results = JSON.parse(stdout) as PullRequestLike[];
+      return normalizePullRequests(results);
+    } catch (error) {
+      if (isUnknownJsonFieldError(error, 'permalink')) {
+        const fallbackArgs = [...baseArgs, '--json', 'number,repository,title,url'];
+        const { stdout } = await this.exec(fallbackArgs);
+        const results = JSON.parse(stdout) as PullRequestLike[];
+        return normalizePullRequests(results);
+      }
+      throw error;
+    }
   }
 
   async closePullRequest(
