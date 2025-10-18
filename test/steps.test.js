@@ -16,20 +16,31 @@ const prs = [
     title: 'Drop me',
     url: 'https://api.github.com/repos/octo/repo/pulls/2',
     permalink: 'https://github.com/octo/repo/pull/2'
+  },
+  {
+    number: 3,
+    repository: { nameWithOwner: 'octo/repo' },
+    title: 'No permalink',
+    url: 'https://github.com/octo/repo/pull/3'
   }
 ];
 
 test('applyExclude filters HTML URLs', () => {
   const { remaining } = applyExclude(prs, ['https://github.com/octo/repo/pull/2']);
-  assert.deepStrictEqual(remaining, [prs[0]]);
+  assert.deepStrictEqual(remaining, [prs[0], prs[2]]);
 });
 
 test('applyExclude filters shorthand owner/repo#number references', () => {
   const { remaining } = applyExclude(prs, ['octo/repo#2']);
-  assert.deepStrictEqual(remaining, [prs[0]]);
+  assert.deepStrictEqual(remaining, [prs[0], prs[2]]);
 });
 
 test('applyExclude tolerates mixed separators', () => {
   const { remaining } = applyExclude(prs, ['octo/repo/pull/2', '']);
-  assert.deepStrictEqual(remaining, [prs[0]]);
+  assert.deepStrictEqual(remaining, [prs[0], prs[2]]);
+});
+
+test('applyExclude handles pull requests without permalink data', () => {
+  const { remaining } = applyExclude(prs, ['octo/repo#3']);
+  assert.deepStrictEqual(remaining, [prs[0], prs[1]]);
 });
