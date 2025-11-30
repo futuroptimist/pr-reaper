@@ -59,12 +59,18 @@ export function parseInputs(readInput = defaultInputReader, env = process.env) {
         .map((value) => value.trim())
         .filter((value) => value.length > 0);
     const token = env.GH_TOKEN?.trim();
+    const fallbackPat = env.PR_REAPER_TOKEN?.trim();
     const fallbackToken = env.GITHUB_TOKEN?.trim();
     let resolvedToken = '';
     let tokenSource;
     if (token) {
         resolvedToken = token;
         tokenSource = 'GH_TOKEN';
+    }
+    else if (fallbackPat) {
+        resolvedToken = fallbackPat;
+        tokenSource = 'PR_REAPER_TOKEN';
+        warnings.push('GH_TOKEN is not set; using PR_REAPER_TOKEN.');
     }
     else if (fallbackToken) {
         resolvedToken = fallbackToken;

@@ -8,7 +8,7 @@ async function main() {
         for (const warning of warnings) {
             core.warning(warning);
         }
-        const gh = new GhCli();
+        const gh = new GhCli({ env: { ...process.env, GH_TOKEN: config.token } });
         await runReaper({ inputs: config, gh });
     }
     catch (error) {

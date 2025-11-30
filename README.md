@@ -59,6 +59,8 @@ This workflow uses the GitHub CLI (`gh`). In Actions, `gh` will authenticate as:
   `repo` scope is missing and warns when `read:org` is absent.
 - Otherwise, it may fall back to `GITHUB_TOKEN` or be unauthenticated. `GITHUB_TOKEN` is only scoped
   to the current repo, so cross-repo searches will return nothing.
+- If `GH_TOKEN` is missing but `PR_REAPER_TOKEN` is present, the action now forwards it to `gh` as a
+  fallback.
 
 If you provide the `org` input, the token must include `read:org` scope or the workflow will exit
 with an error.

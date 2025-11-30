@@ -61,3 +61,11 @@ test('parseInputs emits warning when falling back to GITHUB_TOKEN', () => {
   assert.strictEqual(config.tokenSource, 'GITHUB_TOKEN');
   assert.ok(warnings.some((warning) => warning.includes('falling back to GITHUB_TOKEN')));
 });
+
+test('parseInputs accepts PR_REAPER_TOKEN as a fallback', () => {
+  const env = { ...baseEnv, GH_TOKEN: '', PR_REAPER_TOKEN: 'ghp_pat' };
+  const { warnings, config } = parseInputs(readerFactory(baseInputs), env);
+  assert.strictEqual(config.token, 'ghp_pat');
+  assert.strictEqual(config.tokenSource, 'PR_REAPER_TOKEN');
+  assert.ok(warnings.some((warning) => warning.includes('PR_REAPER_TOKEN')));
+});
