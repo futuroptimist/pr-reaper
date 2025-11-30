@@ -88,7 +88,7 @@ function parseLoginFromAuthStatus(authStatus: string): string | null {
     }
 
     const match =
-      line.match(/logged in to[^\n]*? as ([^\s(]+)/i) ||
+      line.match(/logged in to.*? as ([^\s(]+)/i) ||
       line.match(/logged in as ([^\s(]+)/i);
 
     if (match?.[1]) {
