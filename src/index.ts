@@ -11,7 +11,7 @@ async function main(): Promise<void> {
       core.warning(warning);
     }
 
-    const ghEnv = createGhEnvironment(config.token, config.tokenSource);
+    const ghEnv = createGhEnvironment(config.token);
     const gh = new GhCli({ env: ghEnv });
     await runReaper({ inputs: config, gh, env: ghEnv });
   } catch (error) {
