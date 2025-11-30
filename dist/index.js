@@ -2,14 +2,16 @@ import * as core from '@actions/core';
 import { GhCli } from './gh.js';
 import { parseInputs, InputError } from './inputs.js';
 import { runReaper } from './reap.js';
+import { createGhEnvironment } from './env.js';
 async function main() {
     try {
         const { config, warnings } = parseInputs();
         for (const warning of warnings) {
             core.warning(warning);
         }
-        const gh = new GhCli();
-        await runReaper({ inputs: config, gh });
+        const ghEnv = createGhEnvironment(config.token, config.tokenSource);
+        const gh = new GhCli({ env: ghEnv });
+        await runReaper({ inputs: config, gh, env: ghEnv });
     }
     catch (error) {
         if (error instanceof InputError) {
