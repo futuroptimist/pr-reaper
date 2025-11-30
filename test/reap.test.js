@@ -5,6 +5,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runReaper } from '../dist/reap.js';
 
+const summaryFile = join(tmpdir(), 'pr-reaper-summary.md');
+const outputFile = join(tmpdir(), 'pr-reaper-output.txt');
+writeFileSync(summaryFile, '');
+writeFileSync(outputFile, '');
+process.env.GITHUB_STEP_SUMMARY = summaryFile;
+process.env.GITHUB_OUTPUT = outputFile;
+
 class FakeGh {
   constructor(options = {}) {
     this.scopes = options.scopes ?? ['repo', 'read:org'];
@@ -62,12 +69,8 @@ const baseConfig = {
 
 function createWorkspace() {
   const dir = mkdtempSync(join(tmpdir(), 'pr-reaper-'));
-  const summaryFile = join(dir, 'summary.md');
-  const outputFile = join(dir, 'output.txt');
   writeFileSync(summaryFile, '');
   writeFileSync(outputFile, '');
-  process.env.GITHUB_STEP_SUMMARY = summaryFile;
-  process.env.GITHUB_OUTPUT = outputFile;
   return dir;
 }
 
@@ -90,11 +93,27 @@ test('runReaper fails when read:org is missing for org searches', async () => {
 });
 
 test('runReaper fails when gh is unauthenticated', async () => {
-  const gh = new FakeGh({ login: null, scopes: ['repo', 'read:org'] });
+  const gh = new FakeGh({
+    login: null,
+    scopes: ['repo', 'read:org'],
+    status: 'You are not logged into any GitHub hosts.'
+  });
   const workspace = createWorkspace();
   await assert.rejects(
     () => runReaper({ inputs: baseConfig, gh, workspace, artifactClient: artifactStub }),
     /unauthenticated/
+  );
+});
+
+test('runReaper derives login from auth status when user API fails', async () => {
+  const gh = new FakeGh({
+    login: null,
+    status: 'github.com: Logged in as actions-user (GITHUB_TOKEN)'
+  });
+  const workspace = createWorkspace();
+
+  await assert.doesNotReject(() =>
+    runReaper({ inputs: baseConfig, gh, workspace, artifactClient: artifactStub })
   );
 });
 

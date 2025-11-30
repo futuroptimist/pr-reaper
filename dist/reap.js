@@ -62,6 +62,20 @@ function formatCsv(prs) {
     }
     return lines.join('\n') + '\n';
 }
+function parseLoginFromAuthStatus(authStatus) {
+    for (const rawLine of authStatus.split(/\r?\n/)) {
+        const line = rawLine.trim();
+        if (!line) {
+            continue;
+        }
+        const match = line.match(/logged in to[^\n]*? as ([^\s(]+)/i) ||
+            line.match(/logged in as ([^\s(]+)/i);
+        if (match?.[1]) {
+            return match[1];
+        }
+    }
+    return null;
+}
 async function uploadDryRunArtifacts(prs, workspace, artifact) {
     const artifactDir = join(workspace, 'dry-run-artifacts');
     await fs.mkdir(artifactDir, { recursive: true });
@@ -129,7 +143,10 @@ export async function runReaper(options) {
         logger.info('gh auth status:');
         logger.info(authStatus);
     }
-    const login = await gh.getLogin();
+    let login = await gh.getLogin();
+    if (!login && authStatus) {
+        login = parseLoginFromAuthStatus(authStatus);
+    }
     if (!login) {
         throw new Error('gh is unauthenticated; set PR_REAPER_TOKEN with repo scope.');
     }
