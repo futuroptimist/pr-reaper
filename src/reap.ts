@@ -185,7 +185,13 @@ export async function runReaper(options: RunOptions): Promise<void> {
     logger.info(`gh version: ${ghVersion}`);
   }
 
-  const authStatus = await gh.authStatus().catch(() => null);
+  let authStatus: string | null = null;
+  try {
+    authStatus = await gh.authStatus();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.warn(`gh auth status failed: ${message}`);
+  }
   if (authStatus) {
     logger.info('gh auth status:');
     logger.info(authStatus);

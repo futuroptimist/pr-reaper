@@ -105,6 +105,35 @@ test('runReaper fails when gh is unauthenticated', async () => {
   );
 });
 
+test('runReaper logs auth status failures for diagnostics', async () => {
+  const gh = new FakeGh({ login: null });
+  gh.authStatus = async () => {
+    throw new Error('auth status is unavailable');
+  };
+
+  const workspace = createWorkspace();
+  const logs = [];
+  const consoleStub = {
+    log: (message) => logs.push(`log:${message}`),
+    warn: (message) => logs.push(`warn:${message}`),
+    error: (message) => logs.push(`error:${message}`)
+  };
+
+  await assert.rejects(
+    () =>
+      runReaper({
+        inputs: baseConfig,
+        gh,
+        workspace,
+        artifactClient: artifactStub,
+        console: consoleStub
+      }),
+    /unauthenticated/
+  );
+
+  assert(logs.some((line) => line.includes('gh auth status failed: auth status is unavailable')));
+});
+
 test('runReaper derives login from auth status when user API fails', async () => {
   const gh = new FakeGh({
     login: null,
