@@ -2,12 +2,12 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createGhEnvironment } from '../dist/env.js';
 
-test('GH_TOKEN source adds only GH_TOKEN to the environment', () => {
+test('GH_TOKEN source sets both GH_TOKEN and GITHUB_TOKEN', () => {
   const baseEnv = { EXISTING: 'value' };
   const env = createGhEnvironment('secret-token', 'GH_TOKEN', baseEnv);
 
   assert.strictEqual(env.GH_TOKEN, 'secret-token');
-  assert.strictEqual(env.GITHUB_TOKEN, undefined);
+  assert.strictEqual(env.GITHUB_TOKEN, 'secret-token');
   assert.strictEqual(env.EXISTING, 'value');
   assert.deepStrictEqual(baseEnv, { EXISTING: 'value' });
 });
