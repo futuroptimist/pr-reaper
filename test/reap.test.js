@@ -258,3 +258,42 @@ test('runReaper closes PRs when not in dry run', async () => {
     deleteBranch: baseConfig.deleteBranch
   });
 });
+
+test('runReaper respects HTML PR URL exclusions', async () => {
+  const excludedUrl = 'https://github.com/democratizedspace/dspace/pull/2180';
+
+  const prs = [
+    {
+      number: 2180,
+      permalink: excludedUrl,
+      repository: { nameWithOwner: 'democratizedspace/dspace' },
+      title: 'Do not close me',
+      url: excludedUrl
+    },
+    {
+      number: 42,
+      permalink: 'https://github.com/octo/repo/pull/42',
+      repository: { nameWithOwner: 'octo/repo' },
+      title: 'Safe to close',
+      url: 'https://github.com/octo/repo/pull/42'
+    }
+  ];
+
+  const gh = new FakeGh({ prs });
+  const workspace = createWorkspace();
+
+  await runReaper({
+    inputs: { ...baseConfig, dryRun: false, exclude: [excludedUrl] },
+    gh,
+    workspace,
+    artifactClient: artifactStub
+  });
+
+  assert.strictEqual(gh.closed.length, 1);
+  assert.deepStrictEqual(gh.closed[0], {
+    repo: 'octo/repo',
+    number: 42,
+    comment: baseConfig.comment,
+    deleteBranch: baseConfig.deleteBranch
+  });
+});
