@@ -8,7 +8,7 @@ on:
         type: boolean
         default: true
       author:
-        description: "GitHub username for author: qualifier (blank → uses github.actor)"
+        description: "GitHub username for author: qualifier (blank -> uses github.actor)"
         type: string
         default: ""
       org:
@@ -24,7 +24,7 @@ on:
         type: boolean
         default: true
       limit:
-        description: "Max PRs to process (1–1000)"
+        description: "Max PRs to process (1-1000)"
         type: string
         default: "1000"
       comment:
@@ -39,23 +39,192 @@ on:
 permissions:
   contents: read
   pull-requests: write
-  issues: write
 
 jobs:
   reap:
     runs-on: ubuntu-latest
+    # Prefer a user PAT if provided. If PR_REAPER_TOKEN is not set, gh will fall back
+    # to GITHUB_TOKEN or be unauthenticated.
     env:
-      GH_TOKEN: ${{ secrets.PR_REAPER_TOKEN != '' && secrets.PR_REAPER_TOKEN || secrets.GITHUB_TOKEN }}
+      GH_TOKEN: ${{ secrets.PR_REAPER_TOKEN != '' && secrets.PR_REAPER_TOKEN || github.token }}
+
     steps:
-      - uses: actions/checkout@v4
-      - name: Run pr-reaper
-        uses: ./
-        with:
-          dry_run: ${{ github.event.inputs.dry_run }}
-          author: ${{ github.event.inputs.author }}
-          org: ${{ github.event.inputs.org }}
-          title_filter: ${{ github.event.inputs.title_filter }}
-          delete_branch: ${{ github.event.inputs.delete_branch }}
-          limit: ${{ github.event.inputs.limit }}
-          comment: ${{ github.event.inputs.comment }}
-          exclude_urls: ${{ github.event.inputs.exclude_urls }}
+      - name: Show auth identity
+        run: |
+          set -euo pipefail
+
+          echo "gh version:"; gh --version | head -n1 || true
+          echo "gh auth status:"; gh auth status || true
+          echo "gh api user (login):"
+          LOGIN="$(gh api user --jq .login 2>/dev/null || true)"
+          echo "${LOGIN:-"(none)"}"
+
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::error::GH_TOKEN is not set; add PR_REAPER_TOKEN with repo scope."
+            exit 1
+          fi
+
+          if [ -z "${LOGIN:-}" ]; then
+            echo "::error::gh is unauthenticated; check PR_REAPER_TOKEN."
+            exit 1
+          fi
+
+          # Case-insensitive header parse; some runners capitalize this header.
+          RAW_HEADERS="$(gh api -i user 2>/dev/null | tr -d '\r' || true)"
+          SCOPES="$(awk 'BEGIN{IGNORECASE=1} /^x-oauth-scopes:/ {sub(/^x-oauth-scopes:[[:space:]]*/,""); print}' \
+            <<< "$RAW_HEADERS")"
+
+          # Fallback: parse scopes from `gh auth status` if header isn’t present.
+          if [ -z "${SCOPES:-}" ]; then
+            SCOPES="$(gh auth status 2>/dev/null | sed -n 's/.*Token scopes: \(.*\)$/\1/p' | tr -d ,)"
+          fi
+
+          SCOPES_TRIM="$(echo "${SCOPES:-}" | xargs || true)"
+          echo "token scopes (best-effort): ${SCOPES_TRIM:-"(unknown)"}"
+
+          has_repo=0
+          has_readorg=0
+          grep -Eiq '(^|[[:space:],])repo([[:space:],]|$)' <<< "${SCOPES_TRIM:-}" && has_repo=1 || true
+          grep -Eiq '(^|[[:space:],])read:org([[:space:],]|$)' <<< "${SCOPES_TRIM:-}" && has_readorg=1 || true
+
+          ORG_INPUT="${{ inputs.org }}"
+
+          if [ "$has_repo" -ne 1 ]; then
+            echo "::error::GH_TOKEN lacks 'repo' scope; add PR_REAPER_TOKEN with repo scope."
+            exit 1
+          fi
+
+          if [ -n "$ORG_INPUT" ] && [ "$has_readorg" -ne 1 ]; then
+            echo "::error::GH_TOKEN lacks 'read:org' scope required for org searches."
+            exit 1
+          fi
+
+          if [ "$has_readorg" -ne 1 ]; then
+            echo "::warning::Could not verify 'read:org'; org PRs may be skipped."
+          fi
+
+      - name: Search PRs
+        # Use gh search prs to match results from GitHub UI.
+        id: search
+        run: |
+          set -euo pipefail
+
+          LIMIT_INPUT="${{ inputs.limit }}"
+          if [ -z "$LIMIT_INPUT" ]; then
+            LIMIT_INPUT="1000"
+          fi
+
+          case "$LIMIT_INPUT" in
+            ''|*[!0-9]*)
+              echo "::error::limit must be an integer between 1 and 1000"
+              exit 1
+              ;;
+          esac
+
+          if [ "$LIMIT_INPUT" -lt 1 ] || [ "$LIMIT_INPUT" -gt 1000 ]; then
+            echo "::error::limit must be an integer between 1 and 1000"
+            exit 1
+          fi
+
+          LIMIT="$LIMIT_INPUT"
+
+          AUTHOR="${{ inputs.author }}"
+          if [ -z "$AUTHOR" ]; then
+            AUTHOR="${{ github.actor }}"
+          fi
+
+          CMD=(gh search prs --author "$AUTHOR" --state open \
+            --limit "$LIMIT" \
+            --json number,repository,title,url)
+
+          if [ -n "${{ inputs.org }}" ]; then
+            CMD+=(--owner "${{ inputs.org }}")
+          fi
+
+          if [ -n "${{ inputs.title_filter }}" ]; then
+            CMD+=(--search "${{ inputs.title_filter }}" --match title)
+          fi
+
+          echo "Search command: ${CMD[*]}"
+          "${CMD[@]}" | tee prs.json
+
+          EXCLUDE_INPUT="${{ inputs.exclude_urls }}"
+          if [ -n "$EXCLUDE_INPUT" ]; then
+            printf '%s\n' "$EXCLUDE_INPUT" | python3 - << 'PY' > exclude.json
+            import json
+            import re
+            import sys
+
+            data = sys.stdin.read().replace('\r', '\n')
+            parts = [part.strip() for part in re.split(r'[\s,;|]+', data) if part.strip()]
+            json.dump(parts, sys.stdout)
+PY
+            EXCLUDE_COUNT=$(jq 'length' exclude.json)
+            if [ "$EXCLUDE_COUNT" -gt 0 ]; then
+              echo "Excluding $EXCLUDE_COUNT PR URL(s):"
+              jq -r '.[]' exclude.json
+              jq --slurpfile exclude exclude.json '
+                map(select(.url as $url | ($exclude[0] | index($url)) | not))
+              ' prs.json > filtered.json
+              mv filtered.json prs.json
+            fi
+          fi
+
+          COUNT=$(jq 'length' prs.json)
+          rm -f exclude.json filtered.json || true
+          echo "Found $COUNT PR(s)"
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+
+      - name: Write summary
+        run: |
+          COUNT="${{ steps.search.outputs.count }}"
+
+          {
+            echo "## pr-reaper summary"
+            echo
+            if [ "$COUNT" = "0" ]; then
+              echo "No open PRs found."
+            else
+              echo "Found **$COUNT** open PR(s):"
+              echo
+              jq -r '
+                .[] |
+                "- [\(.title)](\(.url)) (\(.repository.nameWithOwner)#\(.number))"
+              ' prs.json
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Dry-run listing
+        if: ${{ inputs.dry_run }}
+        run: |
+          jq -r '.[] | "\(.url) - \(.title)"' prs.json
+
+      - name: Close PRs
+        if: ${{ !inputs.dry_run && steps.search.outputs.count != '0' }}
+        run: |
+          set -euo pipefail
+
+          TOTAL="${{ steps.search.outputs.count }}"
+          DELETE_FLAG=""
+
+          if [ "${{ inputs.delete_branch }}" = 'true' ]; then
+            DELETE_FLAG="--delete-branch"
+          fi
+
+          COMMENT="${{ inputs.comment }}"
+          INDEX=1
+
+          while IFS=$'\t' read -r NUM REPO; do
+            PCT=$(awk -v i="$INDEX" -v total="$TOTAL" 'BEGIN { printf "%.1f", (i / total) * 100 }')
+            echo "[${INDEX}/${TOTAL} - ${PCT}%] Closing ${REPO}#${NUM}"
+
+            CMD=(gh pr close "$NUM" --repo "$REPO" --comment "$COMMENT")
+            if [ -n "$DELETE_FLAG" ]; then
+              CMD+=("$DELETE_FLAG")
+            fi
+
+            echo "${CMD[*]}"
+            "${CMD[@]}"
+
+            INDEX=$((INDEX + 1))
+          done < <(jq -r '.[] | "\(.number)\t\(.repository.nameWithOwner)"' prs.json)
