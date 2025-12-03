@@ -43,8 +43,6 @@ permissions:
 jobs:
   reap:
     runs-on: ubuntu-latest
-    # Prefer a user PAT if provided. If PR_REAPER_TOKEN is not set, gh will fall back
-    # to GITHUB_TOKEN or be unauthenticated.
     env:
       GH_TOKEN: ${{ secrets.PR_REAPER_TOKEN != '' && secrets.PR_REAPER_TOKEN || github.token }}
 
@@ -69,12 +67,10 @@ jobs:
             exit 1
           fi
 
-          # Case-insensitive header parse; some runners capitalize this header.
           RAW_HEADERS="$(gh api -i user 2>/dev/null | tr -d '\r' || true)"
           SCOPES="$(awk 'BEGIN{IGNORECASE=1} /^x-oauth-scopes:/ {sub(/^x-oauth-scopes:[[:space:]]*/,""); print}' \
             <<< "$RAW_HEADERS")"
 
-          # Fallback: parse scopes from `gh auth status` if header isn’t present.
           if [ -z "${SCOPES:-}" ]; then
             SCOPES="$(gh auth status 2>/dev/null | sed -n 's/.*Token scopes: \(.*\)$/\1/p' | tr -d ,)"
           fi
@@ -104,7 +100,6 @@ jobs:
           fi
 
       - name: Search PRs
-        # Use gh search prs to match results from GitHub UI.
         id: search
         run: |
           set -euo pipefail
@@ -158,7 +153,7 @@ jobs:
             data = sys.stdin.read().replace('\r', '\n')
             parts = [part.strip() for part in re.split(r'[\s,;|]+', data) if part.strip()]
             json.dump(parts, sys.stdout)
-PY
+          PY
             EXCLUDE_COUNT=$(jq 'length' exclude.json)
             if [ "$EXCLUDE_COUNT" -gt 0 ]; then
               echo "Excluding $EXCLUDE_COUNT PR URL(s):"
