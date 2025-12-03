@@ -9,6 +9,13 @@ on:
 
 
 jobs:
+  lint-actions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint GitHub Actions workflows with actionlint
+        uses: rhysd/actionlint@v1
+
   test:
     runs-on: ubuntu-latest
     steps:
