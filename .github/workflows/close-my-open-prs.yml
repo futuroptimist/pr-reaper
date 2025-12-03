@@ -153,7 +153,7 @@ jobs:
             data = sys.stdin.read().replace('\r', '\n')
             parts = [part.strip() for part in re.split(r'[\s,;|]+', data) if part.strip()]
             json.dump(parts, sys.stdout)
-PY
+          PY
             EXCLUDE_COUNT=$(jq 'length' exclude.json)
             if [ "$EXCLUDE_COUNT" -gt 0 ]; then
               echo "Excluding $EXCLUDE_COUNT PR URL(s):"

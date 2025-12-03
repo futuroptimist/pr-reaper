@@ -11,6 +11,13 @@ const headerSource = permissionsMarker === -1
   : workflowSource.slice(0, permissionsMarker);
 const workflow = parse(headerSource);
 
+test('close-my-open-prs workflow parses as valid YAML', () => {
+  assert.doesNotThrow(
+    () => parse(workflowSource),
+    'Expected close-my-open-prs workflow to be valid YAML.'
+  );
+});
+
 test('close-my-open-prs workflow supports manual dispatch', () => {
   assert.ok(
     workflow?.on?.workflow_dispatch,
