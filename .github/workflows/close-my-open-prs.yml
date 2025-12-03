@@ -44,7 +44,7 @@ jobs:
   reap:
     runs-on: ubuntu-latest
     env:
-      GH_TOKEN: ${{ secrets.PR_REAPER_TOKEN != '' && secrets.PR_REAPER_TOKEN || github.token }}
+        GH_TOKEN: ${{ secrets.PR_REAPER_TOKEN != '' && secrets.PR_REAPER_TOKEN || github.token }}
 
     steps:
       - name: Show auth identity
@@ -80,8 +80,13 @@ jobs:
 
           has_repo=0
           has_readorg=0
-          grep -Eiq '(^|[[:space:],])repo([[:space:],]|$)' <<< "${SCOPES_TRIM:-}" && has_repo=1 || true
-          grep -Eiq '(^|[[:space:],])read:org([[:space:],]|$)' <<< "${SCOPES_TRIM:-}" && has_readorg=1 || true
+          if grep -Eiq '(^|[[:space:],])repo([[:space:],]|$)' <<< "${SCOPES_TRIM:-}"; then
+            has_repo=1
+          fi
+
+          if grep -Eiq '(^|[[:space:],])read:org([[:space:],]|$)' <<< "${SCOPES_TRIM:-}"; then
+            has_readorg=1
+          fi
 
           ORG_INPUT="${{ inputs.org }}"
 
@@ -130,7 +135,7 @@ jobs:
 
           CMD=(gh search prs --author "$AUTHOR" --state open \
             --limit "$LIMIT" \
-            --json number,repository,title,url)
+            --json "number,repository,title,url")
 
           if [ -n "${{ inputs.org }}" ]; then
             CMD+=(--owner "${{ inputs.org }}")
