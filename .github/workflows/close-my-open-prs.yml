@@ -44,7 +44,7 @@ jobs:
   reap:
     runs-on: ubuntu-latest
     env:
-      GH_TOKEN: ${{ secrets.PR_REAPER_TOKEN != '' && secrets.PR_REAPER_TOKEN || github.token }}
+        GH_TOKEN: ${{ secrets.PR_REAPER_TOKEN != '' && secrets.PR_REAPER_TOKEN || github.token }}
 
     steps:
       - name: Show auth identity
@@ -80,8 +80,13 @@ jobs:
 
           has_repo=0
           has_readorg=0
-          grep -Eiq '(^|[[:space:],])repo([[:space:],]|$)' <<< "${SCOPES_TRIM:-}" && has_repo=1 || true
-          grep -Eiq '(^|[[:space:],])read:org([[:space:],]|$)' <<< "${SCOPES_TRIM:-}" && has_readorg=1 || true
+          if grep -Eiq '(^|[[:space:],])repo([[:space:],]|$)' <<< "${SCOPES_TRIM:-}"; then
+            has_repo=1
+          fi
+
+          if grep -Eiq '(^|[[:space:],])read:org([[:space:],]|$)' <<< "${SCOPES_TRIM:-}"; then
+            has_readorg=1
+          fi
 
           ORG_INPUT="${{ inputs.org }}"
 
@@ -130,7 +135,7 @@ jobs:
 
           CMD=(gh search prs --author "$AUTHOR" --state open \
             --limit "$LIMIT" \
-            --json number,repository,title,url)
+            --json "number,repository,title,url")
 
           if [ -n "${{ inputs.org }}" ]; then
             CMD+=(--owner "${{ inputs.org }}")
@@ -145,15 +150,11 @@ jobs:
 
           EXCLUDE_INPUT="${{ inputs.exclude_urls }}"
           if [ -n "$EXCLUDE_INPUT" ]; then
-            printf '%s\n' "$EXCLUDE_INPUT" | python3 - << 'PY' > exclude.json
-            import json
-            import re
-            import sys
-
-            data = sys.stdin.read().replace('\r', '\n')
-            parts = [part.strip() for part in re.split(r'[\s,;|]+', data) if part.strip()]
-            json.dump(parts, sys.stdout)
-          PY
+            printf '%s\n' "$EXCLUDE_INPUT" \
+              | python3 -c 'import json, re, sys; data = sys.stdin.read().replace("\r", "\n"); ' \
+                'parts = [p.strip() for p in re.split(r"[\s,;|]+", data) if p.strip()]; ' \
+                'json.dump(parts, sys.stdout)' \
+              > exclude.json
             EXCLUDE_COUNT=$(jq 'length' exclude.json)
             if [ "$EXCLUDE_COUNT" -gt 0 ]; then
               echo "Excluding $EXCLUDE_COUNT PR URL(s):"

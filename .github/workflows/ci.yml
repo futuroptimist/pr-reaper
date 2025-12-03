@@ -9,6 +9,15 @@ on:
 
 
 jobs:
+  lint-actions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install actionlint
+        run: bash <(curl -s https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+      - name: Lint GitHub Actions workflows with actionlint
+        run: ./actionlint
+
   test:
     runs-on: ubuntu-latest
     steps:
