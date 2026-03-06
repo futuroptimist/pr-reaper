@@ -8,11 +8,16 @@ class TestGhCli extends GhCli {
     this.failuresBeforeSuccess = 0;
     this.execCalls = 0;
     this.sleepCalls = [];
+    this.forcedError = null;
     this.nonRetryableError = null;
   }
 
   async exec() {
     this.execCalls += 1;
+    if (this.forcedError) {
+      throw this.forcedError;
+    }
+
     if (this.nonRetryableError) {
       throw this.nonRetryableError;
     }
@@ -52,4 +57,21 @@ test('closePullRequest does not retry on non-retryable failures', async () => {
 
   assert.equal(gh.execCalls, 1);
   assert.deepEqual(gh.sleepCalls, []);
+});
+
+test('closePullRequest stops retrying at max attempts and rethrows the original retryable GhError', async () => {
+  const gh = new TestGhCli();
+  const retryableError = new GhError('too fast', 1, 'GraphQL: was submitted too quickly (addComment)');
+  gh.forcedError = retryableError;
+
+  await assert.rejects(
+    () => gh.closePullRequest('democratizedspace/dspace', 3197, 'Closing as superseded.', true),
+    (error) => {
+      assert.equal(error, retryableError);
+      return true;
+    }
+  );
+
+  assert.equal(gh.execCalls, 3);
+  assert.deepEqual(gh.sleepCalls, [1500, 3000]);
 });
