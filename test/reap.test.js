@@ -20,6 +20,8 @@ class FakeGh {
     this.closed = [];
     this.versionInfo = options.version ?? 'gh version 2.0.0';
     this.statusInfo = options.status ?? 'Logged in to github.com as octocat';
+    this.failCloseWithThrottle = options.failCloseWithThrottle ?? false;
+    this.closeAttempts = 0;
   }
 
   async version() {
@@ -43,6 +45,10 @@ class FakeGh {
   }
 
   async closePullRequest(repo, number, comment, deleteBranch) {
+    this.closeAttempts += 1;
+    if (this.failCloseWithThrottle && this.closeAttempts === 1) {
+      throw new Error('GraphQL: was submitted too quickly (addComment)');
+    }
     this.closed.push({ repo, number, comment, deleteBranch });
   }
 }
@@ -254,6 +260,36 @@ test('runReaper closes PRs when not in dry run', async () => {
   assert.deepStrictEqual(gh.closed[0], {
     repo: 'octo/repo',
     number: 7,
+    comment: baseConfig.comment,
+    deleteBranch: baseConfig.deleteBranch
+  });
+});
+
+test('runReaper retries once when close comment submission is throttled', async () => {
+  const prs = [
+    {
+      number: 9,
+      permalink: 'https://github.com/octo/repo/pull/9',
+      repository: { nameWithOwner: 'octo/repo' },
+      title: 'Retry close on comment throttle',
+      url: 'https://github.com/octo/repo/pull/9'
+    }
+  ];
+  const gh = new FakeGh({ prs, failCloseWithThrottle: true });
+  const workspace = createWorkspace();
+
+  await runReaper({
+    inputs: { ...baseConfig, dryRun: false },
+    gh,
+    workspace,
+    artifactClient: artifactStub
+  });
+
+  assert.strictEqual(gh.closeAttempts, 2);
+  assert.strictEqual(gh.closed.length, 1);
+  assert.deepStrictEqual(gh.closed[0], {
+    repo: 'octo/repo',
+    number: 9,
     comment: baseConfig.comment,
     deleteBranch: baseConfig.deleteBranch
   });

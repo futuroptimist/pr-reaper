@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
 import * as core from '@actions/core';
 import { DefaultArtifactClient } from '@actions/artifact';
 import { applyExclude } from './filter.js';
@@ -30,6 +31,25 @@ function hasScope(scopes, name) {
         }
     }
     return false;
+}
+function isCommentSubmissionThrottle(error) {
+    if (!(error instanceof Error)) {
+        return false;
+    }
+    return /was submitted too quickly\s*\(addComment\)/i.test(error.message);
+}
+async function closePullRequestWithRetry(gh, repository, number, comment, deleteBranch, logger, retryDelayMs = 1_500) {
+    try {
+        await gh.closePullRequest(repository, number, comment, deleteBranch);
+    }
+    catch (error) {
+        if (!isCommentSubmissionThrottle(error)) {
+            throw error;
+        }
+        logger.warn(`GitHub temporarily rejected comment submission for ${repository}#${number}; retrying once.`);
+        await sleep(retryDelayMs);
+        await gh.closePullRequest(repository, number, comment, deleteBranch);
+    }
 }
 function formatMarkdown(prs) {
     const lines = ['# pr-reaper dry run', ''];
@@ -207,7 +227,7 @@ export async function runReaper(options) {
     for (const pr of remaining) {
         const label = progressLabel(index, total);
         logger.info(`${label} Closing ${pr.repository.nameWithOwner}#${pr.number}`);
-        await gh.closePullRequest(pr.repository.nameWithOwner, pr.number, inputs.comment, inputs.deleteBranch);
+        await closePullRequestWithRetry(gh, pr.repository.nameWithOwner, pr.number, inputs.comment, inputs.deleteBranch, logger);
         index += 1;
     }
 }
