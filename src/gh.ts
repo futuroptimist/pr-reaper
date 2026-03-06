@@ -32,6 +32,8 @@ export interface PullRequest {
 
 export class GhCli {
   private supportsPermalinkField: boolean | null = null;
+  private static readonly closeRetryDelayMs = 1500;
+  private static readonly closeMaxAttempts = 3;
 
   constructor(private readonly options: GhExecOptions = {}) {}
 
@@ -179,6 +181,29 @@ export class GhCli {
     if (deleteBranch) {
       args.push('--delete-branch');
     }
-    await this.exec(args);
+
+    for (let attempt = 1; attempt <= GhCli.closeMaxAttempts; attempt += 1) {
+      try {
+        await this.exec(args);
+        return;
+      } catch (error) {
+        if (!this.isRetryableCloseError(error) || attempt === GhCli.closeMaxAttempts) {
+          throw error;
+        }
+        await this.sleep(GhCli.closeRetryDelayMs * attempt);
+      }
+    }
+  }
+
+  private isRetryableCloseError(error: unknown): boolean {
+    if (!(error instanceof GhError)) {
+      return false;
+    }
+
+    return /was submitted too quickly \(addComment\)/i.test(error.stderr);
+  }
+
+  protected async sleep(ms: number): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

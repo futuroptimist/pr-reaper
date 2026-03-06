@@ -14,6 +14,8 @@ export class GhError extends Error {
 export class GhCli {
     options;
     supportsPermalinkField = null;
+    static closeRetryDelayMs = 1500;
+    static closeMaxAttempts = 3;
     constructor(options = {}) {
         this.options = options;
     }
@@ -142,7 +144,27 @@ export class GhCli {
         if (deleteBranch) {
             args.push('--delete-branch');
         }
-        await this.exec(args);
+        for (let attempt = 1; attempt <= GhCli.closeMaxAttempts; attempt += 1) {
+            try {
+                await this.exec(args);
+                return;
+            }
+            catch (error) {
+                if (!this.isRetryableCloseError(error) || attempt === GhCli.closeMaxAttempts) {
+                    throw error;
+                }
+                await this.sleep(GhCli.closeRetryDelayMs * attempt);
+            }
+        }
+    }
+    isRetryableCloseError(error) {
+        if (!(error instanceof GhError)) {
+            return false;
+        }
+        return /was submitted too quickly \(addComment\)/i.test(error.stderr);
+    }
+    async sleep(ms) {
+        await new Promise((resolve) => setTimeout(resolve, ms));
     }
 }
 //# sourceMappingURL=gh.js.map
