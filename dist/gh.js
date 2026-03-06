@@ -142,7 +142,33 @@ export class GhCli {
         if (deleteBranch) {
             args.push('--delete-branch');
         }
-        await this.exec(args);
+        const maxAttempts = 5;
+        for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+            try {
+                await this.exec(args);
+                return;
+            }
+            catch (error) {
+                if (!(error instanceof GhError) || !this.isRetriableCloseError(error.stderr)) {
+                    throw error;
+                }
+                if (attempt === maxAttempts) {
+                    throw error;
+                }
+                // GitHub can reject rapid write operations (e.g. addComment) for a short window.
+                // Backing off avoids failing the entire run for this transient condition.
+                await this.sleep(attempt * 1000);
+            }
+        }
+    }
+    isRetriableCloseError(stderr) {
+        return (/was submitted too quickly \(addComment\)/i.test(stderr) ||
+            /secondary rate limit/i.test(stderr));
+    }
+    sleep(ms) {
+        return new Promise((resolve) => {
+            setTimeout(resolve, ms);
+        });
     }
 }
 //# sourceMappingURL=gh.js.map
