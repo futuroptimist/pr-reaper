@@ -30,6 +30,12 @@ export interface PullRequest {
   url: string;
 }
 
+export interface RepositoryPermissions {
+  push?: unknown;
+  maintain?: unknown;
+  admin?: unknown;
+}
+
 export class GhCli {
   private supportsPermalinkField: boolean | null = null;
   private static readonly closeRetryDelayMs = 1500;
@@ -169,6 +175,16 @@ export class GhCli {
     const { stdout } = await this.exec(fallbackArgs);
     const results = JSON.parse(stdout) as PullRequest[];
     return results;
+  }
+
+  async getRepositoryPermissions(repository: string): Promise<RepositoryPermissions> {
+    const { stdout } = await this.exec([
+      'api',
+      `repos/${repository}`,
+      '--jq',
+      '{push: .permissions.push, maintain: .permissions.maintain, admin: .permissions.admin}'
+    ]);
+    return JSON.parse(stdout) as RepositoryPermissions;
   }
 
   async closePullRequest(

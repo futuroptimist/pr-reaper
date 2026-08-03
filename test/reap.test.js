@@ -20,6 +20,9 @@ class FakeGh {
     this.closed = [];
     this.versionInfo = options.version ?? 'gh version 2.0.0';
     this.statusInfo = options.status ?? 'Logged in to github.com as octocat';
+    this.permissions = options.permissions ?? {};
+    this.permissionErrors = options.permissionErrors ?? {};
+    this.permissionLookups = [];
   }
 
   async version() {
@@ -42,6 +45,14 @@ class FakeGh {
     return this.prs;
   }
 
+  async getRepositoryPermissions(repo) {
+    this.permissionLookups.push(repo);
+    if (this.permissionErrors[repo]) {
+      throw this.permissionErrors[repo];
+    }
+    return this.permissions[repo] ?? { push: true, maintain: false, admin: false };
+  }
+
   async closePullRequest(repo, number, comment, deleteBranch) {
     this.closed.push({ repo, number, comment, deleteBranch });
   }
@@ -59,6 +70,7 @@ const baseConfig = {
   org: null,
   titleFilter: null,
   deleteBranch: true,
+  includeExternalContributions: false,
   limit: 1000,
   comment: 'Closing as superseded by a newer Codex run.',
   exclude: [],
@@ -251,6 +263,7 @@ test('runReaper closes PRs when not in dry run', async () => {
   });
 
   assert.strictEqual(gh.closed.length, 1);
+  assert.deepStrictEqual(gh.permissionLookups, ['octo/repo']);
   assert.deepStrictEqual(gh.closed[0], {
     repo: 'octo/repo',
     number: 7,
@@ -290,10 +303,130 @@ test('runReaper respects HTML PR URL exclusions', async () => {
   });
 
   assert.strictEqual(gh.closed.length, 1);
+  assert.deepStrictEqual(gh.permissionLookups, ['octo/repo']);
   assert.deepStrictEqual(gh.closed[0], {
     repo: 'octo/repo',
     number: 42,
     comment: baseConfig.comment,
     deleteBranch: baseConfig.deleteBranch
   });
+});
+
+function makePr(repo, number) {
+  return {
+    number,
+    permalink: `https://github.com/${repo}/pull/${number}`,
+    repository: { nameWithOwner: repo },
+    title: `PR ${number}`,
+    url: `https://github.com/${repo}/pull/${number}`
+  };
+}
+
+test('write, maintain, and admin repository permissions remain eligible by default', async () => {
+  for (const permission of ['push', 'maintain', 'admin']) {
+    const repo = `octo/${permission}`;
+    const gh = new FakeGh({
+      prs: [makePr(repo, 1)],
+      permissions: { [repo]: { push: false, maintain: false, admin: false, [permission]: true } }
+    });
+    await runReaper({
+      inputs: baseConfig,
+      gh,
+      workspace: createWorkspace(),
+      artifactClient: artifactStub
+    });
+    assert.strictEqual(gh.closed.length, 1, `${permission} permission should be eligible`);
+  }
+});
+
+test('external contributions are skipped by default and never closed', async () => {
+  const repo = 'upstream/project';
+  const gh = new FakeGh({
+    prs: [makePr(repo, 2)],
+    permissions: { [repo]: { push: false, maintain: false, admin: false } }
+  });
+  await runReaper({
+    inputs: baseConfig,
+    gh,
+    workspace: createWorkspace(),
+    artifactClient: artifactStub
+  });
+  assert.deepStrictEqual(gh.closed, []);
+});
+
+test('include_external_contributions permits an external PR', async () => {
+  const repo = 'upstream/project';
+  const gh = new FakeGh({
+    prs: [makePr(repo, 3)],
+    permissions: { [repo]: { push: false, maintain: false, admin: false } }
+  });
+  await runReaper({
+    inputs: { ...baseConfig, includeExternalContributions: true },
+    gh,
+    workspace: createWorkspace(),
+    artifactClient: artifactStub
+  });
+  assert.strictEqual(gh.closed.length, 1);
+  assert.deepStrictEqual(gh.permissionLookups, []);
+});
+
+test('explicit exclusions take precedence when external contributions are included', async () => {
+  const pr = makePr('upstream/project', 4);
+  const gh = new FakeGh({ prs: [pr] });
+  await runReaper({
+    inputs: { ...baseConfig, includeExternalContributions: true, exclude: [pr.url] },
+    gh,
+    workspace: createWorkspace(),
+    artifactClient: artifactStub
+  });
+  assert.deepStrictEqual(gh.closed, []);
+  assert.deepStrictEqual(gh.permissionLookups, []);
+});
+
+test('permission lookup failures fail closed with a warning', async () => {
+  const repo = 'upstream/unavailable';
+  const gh = new FakeGh({
+    prs: [makePr(repo, 5)],
+    permissionErrors: { [repo]: new Error('API unavailable') }
+  });
+  const warnings = [];
+  const consoleStub = { log() {}, warn: (message) => warnings.push(message), error() {} };
+  await runReaper({
+    inputs: baseConfig,
+    gh,
+    workspace: createWorkspace(),
+    artifactClient: artifactStub,
+    console: consoleStub
+  });
+  assert.deepStrictEqual(gh.closed, []);
+  assert(warnings.some((warning) => warning.includes(`Permission lookup failed for ${repo}`)));
+});
+
+test('ambiguous permission lookup results fail closed with a warning', async () => {
+  const repo = 'upstream/ambiguous';
+  const gh = new FakeGh({ prs: [makePr(repo, 6)], permissions: { [repo]: { push: false } } });
+  const warnings = [];
+  const consoleStub = { log() {}, warn: (message) => warnings.push(message), error() {} };
+  await runReaper({
+    inputs: baseConfig,
+    gh,
+    workspace: createWorkspace(),
+    artifactClient: artifactStub,
+    console: consoleStub
+  });
+  assert.deepStrictEqual(gh.closed, []);
+  assert(warnings.some((warning) => warning.includes(`Could not determine authenticated permissions for ${repo}`)));
+});
+
+test('repository permission lookups are deduplicated', async () => {
+  const repo = 'octo/project';
+  const gh = new FakeGh({ prs: [makePr(repo, 6), makePr(repo, 7)] });
+  await runReaper({
+    inputs: baseConfig,
+    gh,
+    workspace: createWorkspace(),
+    artifactClient: artifactStub
+  });
+  assert.deepStrictEqual(gh.permissionLookups, [repo]);
+  assert.strictEqual(gh.closed.length, 2);
 });

@@ -87,14 +87,18 @@ async function uploadDryRunArtifacts(prs, workspace, artifact) {
     await fs.writeFile(csvPath, formatCsv(prs));
     await artifact.uploadArtifact('dry-run-prs', [jsonPath, markdownPath, csvPath], artifactDir);
 }
-function logSearchResults(logger, prs, skipped) {
-    logger.info(`Found ${prs.length + skipped.length} pull request(s).`);
+function logSkipped(logger, label, skipped) {
     if (skipped.length > 0) {
-        logger.info(`Skipped ${skipped.length} PR(s) that matched the exclusion list.`);
+        logger.info(`Skipped ${skipped.length} PR(s) ${label}.`);
         for (const pr of skipped) {
             logger.info(`  - ${pr.repository.nameWithOwner}#${pr.number} — ${pr.title}`);
         }
     }
+}
+function logSearchResults(logger, foundCount, prs, explicitlyExcluded, external) {
+    logger.info(`Found ${foundCount} pull request(s).`);
+    logSkipped(logger, 'that matched the explicit exclusion list', explicitlyExcluded);
+    logSkipped(logger, 'protected as external contributions', external);
     if (prs.length === 0) {
         logger.info('No pull requests remain after filtering.');
         return;
@@ -104,7 +108,14 @@ function logSearchResults(logger, prs, skipped) {
         logger.info(`  - ${pr.repository.nameWithOwner}#${pr.number} — ${pr.title}`);
     }
 }
-async function writeSummary(prs, skipped) {
+function addSkippedSummary(title, skipped) {
+    if (skipped.length > 0) {
+        core.summary
+            .addBreak()
+            .addDetails(title, skipped.map((pr) => `${pr.repository.nameWithOwner}#${pr.number} — ${pr.title}`).join('\n'));
+    }
+}
+async function writeSummary(prs, explicitlyExcluded, external) {
     core.summary.addHeading('pr-reaper summary', 2);
     if (prs.length === 0) {
         core.summary.addRaw('No open pull requests found after filtering.');
@@ -115,14 +126,43 @@ async function writeSummary(prs, skipped) {
             .addBreak()
             .addList(prs.map((pr) => `${pr.title} — [${pr.repository.nameWithOwner}#${pr.number}](${pr.permalink || pr.url})`));
     }
-    if (skipped.length > 0) {
-        core.summary
-            .addBreak()
-            .addDetails('Skipped pull requests', skipped
-            .map((pr) => `${pr.repository.nameWithOwner}#${pr.number} — ${pr.title}`)
-            .join('\n') || 'None');
-    }
+    addSkippedSummary('Explicitly excluded pull requests', explicitlyExcluded);
+    addSkippedSummary('External contributions protected by default', external);
     await core.summary.write();
+}
+function hasWritePermission(permissions) {
+    const values = [permissions.push, permissions.maintain, permissions.admin];
+    if (values.some((value) => typeof value !== 'boolean')) {
+        return null;
+    }
+    return values.some((value) => value === true);
+}
+async function protectExternalContributions(prs, gh, logger) {
+    const permissionCache = new Map();
+    const remaining = [];
+    const skipped = [];
+    for (const pr of prs) {
+        const repository = pr.repository.nameWithOwner;
+        const cacheKey = repository.toLowerCase();
+        let eligible = permissionCache.get(cacheKey);
+        if (eligible === undefined) {
+            try {
+                const permission = hasWritePermission(await gh.getRepositoryPermissions(repository));
+                eligible = permission === true;
+                if (permission === null) {
+                    logger.warn(`Could not determine authenticated permissions for ${repository}; protecting its PRs as external.`);
+                }
+            }
+            catch (error) {
+                eligible = false;
+                const message = error instanceof Error ? error.message : String(error);
+                logger.warn(`Permission lookup failed for ${repository}; protecting its PRs as external: ${message}`);
+            }
+            permissionCache.set(cacheKey, eligible);
+        }
+        (eligible ? remaining : skipped).push(pr);
+    }
+    return { remaining, skipped };
 }
 function progressLabel(index, total) {
     const pct = total === 0 ? 0 : (index / total) * 100;
@@ -176,10 +216,14 @@ export async function runReaper(options) {
         org: inputs.org,
         titleFilter: inputs.titleFilter
     });
-    const { remaining, skipped } = applyExclude(results, inputs.exclude);
+    const exclusionResult = applyExclude(results, inputs.exclude);
+    const externalResult = inputs.includeExternalContributions
+        ? { remaining: exclusionResult.remaining, skipped: [] }
+        : await protectExternalContributions(exclusionResult.remaining, gh, logger);
+    const remaining = externalResult.remaining;
     await fs.writeFile(join(workspace, 'prs.json'), JSON.stringify(remaining, null, 2));
-    logSearchResults(logger, remaining, skipped);
-    await writeSummary(remaining, skipped);
+    logSearchResults(logger, results.length, remaining, exclusionResult.skipped, externalResult.skipped);
+    await writeSummary(remaining, exclusionResult.skipped, externalResult.skipped);
     core.setOutput('count', String(remaining.length));
     if (inputs.dryRun) {
         if (!hasArtifactRuntimeEnv(env)) {

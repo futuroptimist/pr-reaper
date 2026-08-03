@@ -6,6 +6,7 @@ export interface InputsConfig {
   org: string | null;
   titleFilter: string | null;
   deleteBranch: boolean;
+  includeExternalContributions: boolean;
   limit: number;
   comment: string;
   exclude: string[];
@@ -82,6 +83,10 @@ export function parseInputs(
 
   const dryRun = coerceBoolean(readInput('dry_run'), true);
   const deleteBranch = coerceBoolean(readInput('delete_branch'), true);
+  const includeExternalContributions = coerceBoolean(
+    readInput('include_external_contributions'),
+    false
+  );
 
   const org = readInput('org').trim() || null;
   const titleFilter = readInput('title_filter').trim() || null;
@@ -123,6 +128,7 @@ export function parseInputs(
     org,
     titleFilter,
     deleteBranch,
+    includeExternalContributions,
     limit,
     comment,
     exclude,

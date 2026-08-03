@@ -29,10 +29,15 @@ test('composite action forwards inputs as environment variables', () => {
     ['INPUT_DELETE_BRANCH', "${{ inputs.delete_branch }}"],
     ['INPUT_LIMIT', "${{ inputs.limit }}"],
     ['INPUT_COMMENT', "${{ inputs.comment }}"],
-    ['INPUT_EXCLUDE_URLS', "${{ inputs.exclude_urls }}"]
+    ['INPUT_EXCLUDE_URLS', "${{ inputs.exclude_urls }}"],
+    ['INPUT_INCLUDE_EXTERNAL_CONTRIBUTIONS', "${{ inputs.include_external_contributions }}"]
   ]);
 
   for (const [key, value] of expectedEnv.entries()) {
     assert.strictEqual(env?.[key], value, `Expected env ${key} to equal ${value}`);
   }
+});
+
+test('composite action safely defaults external contributions to false', () => {
+  assert.strictEqual(action.inputs.include_external_contributions.default, 'false');
 });

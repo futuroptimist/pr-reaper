@@ -37,6 +37,10 @@ inputs:
     description: 'PR URLs to skip (space/comma/newline separated, optional)'
     required: false
     default: ''
+  include_external_contributions:
+    description: 'Include PRs to repositories where the token lacks push, maintain, or admin permission'
+    required: false
+    default: 'false'
 outputs:
   count:
     description: 'Number of pull requests matched after filtering.'
@@ -61,4 +65,5 @@ runs:
         INPUT_LIMIT: ${{ inputs.limit }}
         INPUT_COMMENT: ${{ inputs.comment }}
         INPUT_EXCLUDE_URLS: ${{ inputs.exclude_urls }}
+        INPUT_INCLUDE_EXTERNAL_CONTRIBUTIONS: ${{ inputs.include_external_contributions }}
       run: node dist/index.js

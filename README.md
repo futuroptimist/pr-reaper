@@ -33,6 +33,7 @@ before reaping begins. `gh search prs` powers the lookup so results match what G
 | `limit` | string | `"1000"` | `250` | Valid range: `1`–`1000`. |
 | `comment` | string | `"Closing as superseded by a newer Codex run."` | `"Thanks for iterating!"` | Comment posted while closing PRs. |
 | `exclude_urls` | string | `""` | `https://github.com/octo/repo/pull/42` | Accepts newline, comma, pipe, or semicolon separators. Provide PR URLs to skip. |
+| `include_external_contributions` | boolean | `false` | `true` | When checked, permits PRs to repositories where the token lacks write permission. |
 
 **Outputs**
 
@@ -47,7 +48,13 @@ before reaping begins. `gh search prs` powers the lookup so results match what G
 - Providing `org` requires `read:org`. The workflow exits early with a descriptive error when the
   scope is missing and emits a warning when scope detection is inconclusive.
 - Exclusion filters accept PR URLs to ensure safe skips even when links are copied from different
-  contexts.
+  contexts. Explicit `exclude_urls` always take precedence, including when external contributions
+  are included.
+- By default, external contributions are protected. A PR is considered external when the
+  authenticated token does not have `push`, `maintain`, or `admin` repository permission; this
+  permission-based check keeps repositories in organizations you maintain eligible.
+- Repository permission lookups are deduplicated. Failed, missing, or ambiguous permission results
+  fail closed: all matching PRs in that repository are skipped with a warning.
 
 ## Auth (important)
 

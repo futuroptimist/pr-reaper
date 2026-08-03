@@ -35,6 +35,10 @@ on:
         description: "PR URLs to skip (space/comma/newline separated, optional)"
         type: string
         default: ""
+      include_external_contributions:
+        description: "Include PRs to repositories where this token lacks write permission"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -117,3 +121,4 @@ jobs:
           limit: ${{ inputs.limit }}
           comment: ${{ inputs.comment }}
           exclude_urls: ${{ inputs.exclude_urls }}
+          include_external_contributions: ${{ inputs.include_external_contributions }}
