@@ -10,9 +10,11 @@ class TestGhCli extends GhCli {
     this.sleepCalls = [];
     this.forcedError = null;
     this.nonRetryableError = null;
+    this.lastArgs = null;
   }
 
-  async exec() {
+  async exec(args) {
+    this.lastArgs = args;
     this.execCalls += 1;
     if (this.forcedError) {
       throw this.forcedError;
@@ -33,6 +35,21 @@ class TestGhCli extends GhCli {
     this.sleepCalls.push(ms);
   }
 }
+
+test('getRepositoryPermissions resolves permissions through gh api', async () => {
+  const gh = new TestGhCli();
+  gh.exec = async (args) => {
+    gh.lastArgs = args;
+    return { stdout: '{"push":true,"maintain":false,"admin":false}\n', stderr: '' };
+  };
+
+  assert.deepEqual(await gh.getRepositoryPermissions('octo/repo'), {
+    push: true,
+    maintain: false,
+    admin: false
+  });
+  assert.deepEqual(gh.lastArgs, ['api', 'repos/octo/repo', '--jq', '.permissions']);
+});
 
 test('closePullRequest retries when addComment is submitted too quickly', async () => {
   const gh = new TestGhCli();

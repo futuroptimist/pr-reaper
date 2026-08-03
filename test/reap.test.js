@@ -20,6 +20,9 @@ class FakeGh {
     this.closed = [];
     this.versionInfo = options.version ?? 'gh version 2.0.0';
     this.statusInfo = options.status ?? 'Logged in to github.com as octocat';
+    this.permissions = options.permissions ?? { push: true, maintain: false, admin: false };
+    this.permissionError = options.permissionError;
+    this.permissionLookups = [];
   }
 
   async version() {
@@ -42,6 +45,12 @@ class FakeGh {
     return this.prs;
   }
 
+  async getRepositoryPermissions(repo) {
+    this.permissionLookups.push(repo);
+    if (this.permissionError) throw this.permissionError;
+    return typeof this.permissions === 'function' ? this.permissions(repo) : this.permissions;
+  }
+
   async closePullRequest(repo, number, comment, deleteBranch) {
     this.closed.push({ repo, number, comment, deleteBranch });
   }
@@ -62,6 +71,7 @@ const baseConfig = {
   limit: 1000,
   comment: 'Closing as superseded by a newer Codex run.',
   exclude: [],
+  includeExternalContributions: false,
   token: 'token',
   tokenSource: 'GH_TOKEN',
   actor: 'octocat'
@@ -296,4 +306,242 @@ test('runReaper respects HTML PR URL exclusions', async () => {
     comment: baseConfig.comment,
     deleteBranch: baseConfig.deleteBranch
   });
+});
+
+const externalPr = {
+  number: 9,
+  permalink: 'https://github.com/upstream/project/pull/9',
+  repository: { nameWithOwner: 'upstream/project' },
+  title: 'External contribution',
+  url: 'https://github.com/upstream/project/pull/9'
+};
+
+for (const permission of ['push', 'maintain', 'admin']) {
+  test(`runReaper keeps PRs with ${permission} permission eligible by default`, async () => {
+    const gh = new FakeGh({
+      prs: [externalPr],
+      permissions: { push: false, maintain: false, admin: false, [permission]: true }
+    });
+    await runReaper({ inputs: baseConfig, gh, workspace: createWorkspace(), artifactClient: artifactStub });
+    assert.strictEqual(gh.closed.length, 1);
+  });
+}
+
+test('runReaper protects external contributions by default', async () => {
+  const gh = new FakeGh({ prs: [externalPr], permissions: { push: false, maintain: false, admin: false } });
+  await runReaper({ inputs: baseConfig, gh, workspace: createWorkspace(), artifactClient: artifactStub });
+  assert.deepStrictEqual(gh.closed, []);
+});
+
+test('runReaper includes external contributions when explicitly enabled', async () => {
+  const gh = new FakeGh({ prs: [externalPr], permissions: { push: false, maintain: false, admin: false } });
+  await runReaper({
+    inputs: { ...baseConfig, includeExternalContributions: true },
+    gh,
+    workspace: createWorkspace(),
+    artifactClient: artifactStub
+  });
+  assert.strictEqual(gh.closed.length, 1);
+  assert.deepStrictEqual(gh.permissionLookups, []);
+});
+
+test('explicit exclusions take precedence when external contributions are enabled', async () => {
+  const gh = new FakeGh({ prs: [externalPr] });
+  await runReaper({
+    inputs: { ...baseConfig, includeExternalContributions: true, exclude: [externalPr.url] },
+    gh,
+    workspace: createWorkspace(),
+    artifactClient: artifactStub
+  });
+  assert.deepStrictEqual(gh.closed, []);
+  assert.deepStrictEqual(gh.permissionLookups, []);
+});
+
+test('final filtered PR set is used consistently in dry-run and live modes', async () => {
+  const eligiblePr = {
+    number: 21,
+    permalink: 'https://github.com/octocat/eligible/pull/21',
+    repository: { nameWithOwner: 'octocat/eligible' },
+    title: 'Eligible pull request',
+    url: 'https://github.com/octocat/eligible/pull/21'
+  };
+  const explicitlyExcludedPr = {
+    number: 22,
+    permalink: 'https://github.com/octocat/excluded/pull/22',
+    repository: { nameWithOwner: 'octocat/excluded' },
+    title: 'Explicitly excluded pull request',
+    url: 'https://github.com/octocat/excluded/pull/22'
+  };
+  const protectedExternalPr = {
+    number: 23,
+    permalink: 'https://github.com/upstream/protected/pull/23',
+    repository: { nameWithOwner: 'upstream/protected' },
+    title: 'Protected external pull request',
+    url: 'https://github.com/upstream/protected/pull/23'
+  };
+
+  for (const { dryRun, expectedClosed } of [
+    { dryRun: true, expectedClosed: [] },
+    {
+      dryRun: false,
+      expectedClosed: [
+        {
+          repo: 'octocat/eligible',
+          number: 21,
+          comment: baseConfig.comment,
+          deleteBranch: baseConfig.deleteBranch
+        }
+      ]
+    }
+  ]) {
+    const gh = new FakeGh({
+      prs: [eligiblePr, explicitlyExcludedPr, protectedExternalPr],
+      permissions: (repository) => ({
+        push: repository === 'octocat/eligible',
+        maintain: false,
+        admin: false
+      })
+    });
+    const workspace = createWorkspace();
+    const logs = [];
+    const uploads = [];
+
+    await runReaper({
+      inputs: { ...baseConfig, dryRun, exclude: [explicitlyExcludedPr.url] },
+      gh,
+      workspace,
+      artifactClient: {
+        async uploadArtifact(name, files, rootDirectory) {
+          uploads.push({ name, files, rootDirectory });
+          return {};
+        }
+      },
+      console: {
+        log: (message) => logs.push(message),
+        warn: (message) => logs.push(message),
+        error: (message) => logs.push(message)
+      },
+      env: dryRun
+        ? { ACTIONS_RUNTIME_TOKEN: 'token', ACTIONS_RUNTIME_URL: 'https://example.com' }
+        : {}
+    });
+
+    assert.deepStrictEqual(JSON.parse(readFileSync(join(workspace, 'prs.json'), 'utf8')), [eligiblePr]);
+    assert.match(readFileSync(outputFile, 'utf8'), /(?:^|\n)count<<[^\n]+\n1\n/);
+    assert.deepStrictEqual(gh.closed, expectedClosed);
+    assert.deepStrictEqual(gh.permissionLookups.sort(), ['octocat/eligible', 'upstream/protected']);
+
+    const logContents = logs.join('\n');
+    assert.match(logContents, /Explicitly excluded 1 PR\(s\) via exclude_urls\./);
+    assert.match(logContents, /octocat\/excluded#22 — Explicitly excluded pull request/);
+    assert.match(logContents, /Protected 1 external contribution\(s\)\./);
+    assert.match(logContents, /upstream\/protected#23 — Protected external pull request/);
+
+    const stepSummary = readFileSync(summaryFile, 'utf8');
+    assert.match(stepSummary, /Explicitly excluded via exclude_urls/);
+    assert.match(stepSummary, /octocat\/excluded#22 — Explicitly excluded pull request/);
+    assert.match(stepSummary, /Protected external contributions/);
+    assert.match(stepSummary, /upstream\/protected#23 — Protected external pull request/);
+
+    if (dryRun) {
+      assert.strictEqual(uploads.length, 1);
+      const artifactDirectory = uploads[0].rootDirectory;
+      assert.deepStrictEqual(
+        JSON.parse(readFileSync(join(artifactDirectory, 'prs.json'), 'utf8')),
+        [eligiblePr]
+      );
+      for (const filename of ['summary.md', 'prs.csv']) {
+        const contents = readFileSync(join(artifactDirectory, filename), 'utf8');
+        assert.match(contents, /Eligible pull request/);
+        assert.doesNotMatch(contents, /Explicitly excluded pull request|Protected external pull request/);
+      }
+    } else {
+      assert.deepStrictEqual(uploads, []);
+    }
+  }
+});
+
+test('permission lookup failures fail closed', async () => {
+  const gh = new FakeGh({ prs: [externalPr], permissionError: new Error('API unavailable') });
+  const warnings = [];
+  await runReaper({
+    inputs: baseConfig,
+    gh,
+    workspace: createWorkspace(),
+    artifactClient: artifactStub,
+    console: { log() {}, warn: (message) => warnings.push(message), error() {} }
+  });
+  assert.deepStrictEqual(gh.closed, []);
+  assert(
+    warnings.some((warning) =>
+      warning.includes('Skipping upstream/project: repository permission lookup failed: API unavailable')
+    )
+  );
+});
+
+test('missing permission data fails closed', async () => {
+  const gh = new FakeGh({ prs: [externalPr], permissions: { push: true } });
+  const warnings = [];
+  await runReaper({
+    inputs: baseConfig,
+    gh,
+    workspace: createWorkspace(),
+    artifactClient: artifactStub,
+    console: { log() {}, warn: (message) => warnings.push(message), error() {} }
+  });
+  assert.deepStrictEqual(gh.closed, []);
+  assert(
+    warnings.some((warning) =>
+      warning.includes('Skipping upstream/project: repository permissions were missing or ambiguous.')
+    )
+  );
+});
+
+test('permission lookups are deduplicated per repository', async () => {
+  const secondPr = { ...externalPr, number: 10, url: 'https://github.com/upstream/project/pull/10' };
+  const gh = new FakeGh({
+    prs: [externalPr, secondPr],
+    permissions: { push: false, maintain: false, admin: false }
+  });
+  await runReaper({ inputs: baseConfig, gh, workspace: createWorkspace(), artifactClient: artifactStub });
+  assert.deepStrictEqual(gh.permissionLookups, ['upstream/project']);
+  assert.deepStrictEqual(gh.closed, []);
+});
+
+test('permission lookups run concurrently with a bounded limit', async () => {
+  let activeLookups = 0;
+  let maximumActiveLookups = 0;
+  const prs = Array.from({ length: 8 }, (_, index) => ({
+    ...externalPr,
+    number: index + 1,
+    repository: { nameWithOwner: `upstream/project-${index}` },
+    url: `https://github.com/upstream/project-${index}/pull/${index + 1}`
+  }));
+  const gh = new FakeGh({
+    prs,
+    permissions: async () => {
+      activeLookups += 1;
+      maximumActiveLookups = Math.max(maximumActiveLookups, activeLookups);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      activeLookups -= 1;
+      return { push: true, maintain: false, admin: false };
+    }
+  });
+
+  await runReaper({ inputs: baseConfig, gh, workspace: createWorkspace(), artifactClient: artifactStub });
+
+  assert.ok(maximumActiveLookups > 1, 'expected repository lookups to overlap');
+  assert.ok(maximumActiveLookups <= 5, 'expected at most five concurrent repository lookups');
+  assert.strictEqual(gh.closed.length, prs.length);
+});
+
+test('explicit exclusions avoid unnecessary permission lookups', async () => {
+  const gh = new FakeGh({ prs: [externalPr] });
+  await runReaper({
+    inputs: { ...baseConfig, exclude: [externalPr.url] },
+    gh,
+    workspace: createWorkspace(),
+    artifactClient: artifactStub
+  });
+  assert.deepStrictEqual(gh.permissionLookups, []);
 });
