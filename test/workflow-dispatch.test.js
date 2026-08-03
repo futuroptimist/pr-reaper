@@ -100,7 +100,8 @@ test('close-my-open-prs workflow supports manual dispatch', () => {
     'delete_branch',
     'limit',
     'comment',
-    'exclude_urls'
+    'exclude_urls',
+    'include_external_contributions'
   ];
 
   for (const inputName of expectedInputs) {

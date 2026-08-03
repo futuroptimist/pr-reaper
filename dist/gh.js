@@ -139,6 +139,24 @@ export class GhCli {
         const results = JSON.parse(stdout);
         return results;
     }
+    async getRepositoryPermissions(repository) {
+        const { stdout } = await this.exec(['api', `repos/${repository}`, '--jq', '.permissions']);
+        const permissions = JSON.parse(stdout);
+        if (!permissions || typeof permissions !== 'object') {
+            return null;
+        }
+        const values = permissions;
+        if (typeof values.push !== 'boolean' ||
+            typeof values.maintain !== 'boolean' ||
+            typeof values.admin !== 'boolean') {
+            return null;
+        }
+        return {
+            push: values.push,
+            maintain: values.maintain,
+            admin: values.admin
+        };
+    }
     async closePullRequest(repository, number, comment, deleteBranch) {
         const args = ['pr', 'close', String(number), '--repo', repository, '--comment', comment];
         if (deleteBranch) {

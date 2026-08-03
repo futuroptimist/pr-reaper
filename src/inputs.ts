@@ -9,6 +9,7 @@ export interface InputsConfig {
   limit: number;
   comment: string;
   exclude: string[];
+  includeExternalContributions: boolean;
   token: string;
   tokenSource: 'GH_TOKEN' | 'GITHUB_TOKEN';
   actor: string | null;
@@ -82,6 +83,10 @@ export function parseInputs(
 
   const dryRun = coerceBoolean(readInput('dry_run'), true);
   const deleteBranch = coerceBoolean(readInput('delete_branch'), true);
+  const includeExternalContributions = coerceBoolean(
+    readInput('include_external_contributions'),
+    false
+  );
 
   const org = readInput('org').trim() || null;
   const titleFilter = readInput('title_filter').trim() || null;
@@ -126,6 +131,7 @@ export function parseInputs(
     limit,
     comment,
     exclude,
+    includeExternalContributions,
     token: resolvedToken,
     tokenSource,
     actor

@@ -15,7 +15,8 @@ const baseInputs = {
   delete_branch: 'true',
   limit: '1000',
   comment: 'Closing as superseded by a newer Codex run.',
-  exclude_urls: ''
+  exclude_urls: '',
+  include_external_contributions: ''
 };
 
 function readerFactory(map) {
@@ -27,6 +28,21 @@ test('parseInputs falls back to actor when author is blank', () => {
   assert.strictEqual(config.author, 'octocat');
   assert.strictEqual(config.limit, 1000);
   assert.strictEqual(config.dryRun, true);
+  assert.strictEqual(config.includeExternalContributions, false);
+});
+
+test('parseInputs parses explicit external contribution booleans', () => {
+  const enabled = parseInputs(
+    readerFactory({ ...baseInputs, include_external_contributions: 'true' }),
+    baseEnv
+  );
+  const disabled = parseInputs(
+    readerFactory({ ...baseInputs, include_external_contributions: 'false' }),
+    baseEnv
+  );
+
+  assert.strictEqual(enabled.config.includeExternalContributions, true);
+  assert.strictEqual(disabled.config.includeExternalContributions, false);
 });
 
 test('parseInputs respects explicit false booleans', () => {
