@@ -2,6 +2,7 @@ import { InputOptions, getInput } from '@actions/core';
 
 export interface InputsConfig {
   dryRun: boolean;
+  includeExternalContributions: boolean;
   author: string;
   org: string | null;
   titleFilter: string | null;
@@ -81,6 +82,10 @@ export function parseInputs(
   const limit = coerceInteger(rawLimit, 1000, 1, 1000);
 
   const dryRun = coerceBoolean(readInput('dry_run'), true);
+  const includeExternalContributions = coerceBoolean(
+    readInput('include_external_contributions'),
+    false
+  );
   const deleteBranch = coerceBoolean(readInput('delete_branch'), true);
 
   const org = readInput('org').trim() || null;
@@ -119,6 +124,7 @@ export function parseInputs(
 
   const config: InputsConfig = {
     dryRun,
+    includeExternalContributions,
     author,
     org,
     titleFilter,

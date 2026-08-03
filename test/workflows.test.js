@@ -38,3 +38,13 @@ test('close-my-open-prs workflow uses supported input types', () => {
     }
   }
 });
+
+test('close-my-open-prs safely declares and forwards external contributions', () => {
+  const input = workflow?.on?.workflow_dispatch?.inputs?.include_external_contributions;
+  assert.strictEqual(input?.type, 'boolean');
+  assert.strictEqual(input?.default, false);
+  assert.match(
+    workflowSource,
+    /include_external_contributions:\s*\$\{\{ inputs\.include_external_contributions \}\}/
+  );
+});

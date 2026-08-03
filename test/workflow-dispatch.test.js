@@ -94,6 +94,7 @@ test('close-my-open-prs workflow supports manual dispatch', () => {
 
   const expectedInputs = [
     'dry_run',
+    'include_external_contributions',
     'author',
     'org',
     'title_filter',

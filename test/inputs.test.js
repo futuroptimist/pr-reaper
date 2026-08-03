@@ -9,6 +9,7 @@ const baseEnv = {
 
 const baseInputs = {
   dry_run: 'true',
+  include_external_contributions: '',
   author: '',
   org: '',
   title_filter: '',
@@ -27,17 +28,26 @@ test('parseInputs falls back to actor when author is blank', () => {
   assert.strictEqual(config.author, 'octocat');
   assert.strictEqual(config.limit, 1000);
   assert.strictEqual(config.dryRun, true);
+  assert.strictEqual(config.includeExternalContributions, false);
 });
 
 test('parseInputs respects explicit false booleans', () => {
   const inputs = {
     ...baseInputs,
     dry_run: 'false',
+    include_external_contributions: 'true',
     delete_branch: 'false'
   };
   const { config } = parseInputs(readerFactory(inputs), baseEnv);
   assert.strictEqual(config.dryRun, false);
+  assert.strictEqual(config.includeExternalContributions, true);
   assert.strictEqual(config.deleteBranch, false);
+});
+
+test('parseInputs respects explicit false for external contributions', () => {
+  const inputs = { ...baseInputs, include_external_contributions: 'false' };
+  const { config } = parseInputs(readerFactory(inputs), baseEnv);
+  assert.strictEqual(config.includeExternalContributions, false);
 });
 
 test('parseInputs throws when limit is out of range', () => {

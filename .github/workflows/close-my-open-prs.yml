@@ -7,6 +7,10 @@ on:
         description: "dry_run: when true, list what would be closed (no changes)"
         type: boolean
         default: true
+      include_external_contributions:
+        description: "Include external contributions (token lacks push, maintain, or admin permission)"
+        type: boolean
+        default: false
       author:
         description: "GitHub username for author: qualifier (blank -> uses github.actor)"
         type: string
@@ -110,6 +114,7 @@ jobs:
         uses: ./
         with:
           dry_run: ${{ inputs.dry_run }}
+          include_external_contributions: ${{ inputs.include_external_contributions }}
           author: ${{ inputs.author }}
           org: ${{ inputs.org }}
           title_filter: ${{ inputs.title_filter }}

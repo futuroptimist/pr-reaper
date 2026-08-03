@@ -48,6 +48,7 @@ export function parseInputs(readInput = defaultInputReader, env = process.env) {
     const rawLimit = readInput('limit').trim();
     const limit = coerceInteger(rawLimit, 1000, 1, 1000);
     const dryRun = coerceBoolean(readInput('dry_run'), true);
+    const includeExternalContributions = coerceBoolean(readInput('include_external_contributions'), false);
     const deleteBranch = coerceBoolean(readInput('delete_branch'), true);
     const org = readInput('org').trim() || null;
     const titleFilter = readInput('title_filter').trim() || null;
@@ -79,6 +80,7 @@ export function parseInputs(readInput = defaultInputReader, env = process.env) {
     }
     const config = {
         dryRun,
+        includeExternalContributions,
         author,
         org,
         titleFilter,

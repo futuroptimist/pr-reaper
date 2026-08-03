@@ -23,6 +23,7 @@ test('composite action forwards inputs as environment variables', () => {
 
   const expectedEnv = new Map([
     ['INPUT_DRY_RUN', "${{ inputs.dry_run }}"],
+    ['INPUT_INCLUDE_EXTERNAL_CONTRIBUTIONS', "${{ inputs.include_external_contributions }}"],
     ['INPUT_AUTHOR', "${{ inputs.author }}"],
     ['INPUT_ORG', "${{ inputs.org }}"],
     ['INPUT_TITLE_FILTER', "${{ inputs.title_filter }}"],
@@ -35,4 +36,8 @@ test('composite action forwards inputs as environment variables', () => {
   for (const [key, value] of expectedEnv.entries()) {
     assert.strictEqual(env?.[key], value, `Expected env ${key} to equal ${value}`);
   }
+});
+
+test('composite action safely defaults external contributions to false', () => {
+  assert.strictEqual(action?.inputs?.include_external_contributions?.default, 'false');
 });

@@ -34,6 +34,39 @@ class TestGhCli extends GhCli {
   }
 }
 
+class RepositoryPermissionGh extends GhCli {
+  constructor(stdout) {
+    super();
+    this.stdout = stdout;
+    this.args = null;
+  }
+
+  async exec(args) {
+    this.args = args;
+    return { stdout: this.stdout, stderr: '' };
+  }
+}
+
+test('getRepositoryPermissions resolves authenticated repository permissions through gh api', async () => {
+  const gh = new RepositoryPermissionGh('{"push":false,"maintain":true,"admin":false}\n');
+
+  assert.deepStrictEqual(await gh.getRepositoryPermissions('org/project'), {
+    push: false,
+    maintain: true,
+    admin: false
+  });
+  assert.deepStrictEqual(gh.args, ['api', 'repos/org/project', '--jq', '.permissions']);
+});
+
+test('getRepositoryPermissions rejects missing or ambiguous permission data', async () => {
+  const gh = new RepositoryPermissionGh('{"push":false,"admin":false}\n');
+
+  await assert.rejects(
+    () => gh.getRepositoryPermissions('org/project'),
+    /permission "maintain" was missing or ambiguous/
+  );
+});
+
 test('closePullRequest retries when addComment is submitted too quickly', async () => {
   const gh = new TestGhCli();
   gh.failuresBeforeSuccess = 2;

@@ -18,6 +18,9 @@ class FakeGh {
     this.login = Object.prototype.hasOwnProperty.call(options, 'login') ? options.login : 'octocat';
     this.prs = options.prs ?? [];
     this.closed = [];
+    this.permissions = options.permissions ?? {};
+    this.permissionError = options.permissionError ?? null;
+    this.permissionLookups = [];
     this.versionInfo = options.version ?? 'gh version 2.0.0';
     this.statusInfo = options.status ?? 'Logged in to github.com as octocat';
   }
@@ -42,6 +45,14 @@ class FakeGh {
     return this.prs;
   }
 
+  async getRepositoryPermissions(repo) {
+    this.permissionLookups.push(repo);
+    if (this.permissionError) {
+      throw this.permissionError;
+    }
+    return this.permissions[repo] ?? { push: true, maintain: false, admin: false };
+  }
+
   async closePullRequest(repo, number, comment, deleteBranch) {
     this.closed.push({ repo, number, comment, deleteBranch });
   }
@@ -55,6 +66,7 @@ const artifactStub = {
 
 const baseConfig = {
   dryRun: false,
+  includeExternalContributions: false,
   author: 'octocat',
   org: null,
   titleFilter: null,
@@ -296,4 +308,119 @@ test('runReaper respects HTML PR URL exclusions', async () => {
     comment: baseConfig.comment,
     deleteBranch: baseConfig.deleteBranch
   });
+});
+
+test('runReaper keeps repositories with maintain or admin permission eligible by default', async () => {
+  const prs = [
+    {
+      number: 8,
+      repository: { nameWithOwner: 'org/maintained' },
+      title: 'Maintained organization PR',
+      url: 'https://github.com/org/maintained/pull/8'
+    },
+    {
+      number: 9,
+      repository: { nameWithOwner: 'org/administered' },
+      title: 'Administered organization PR',
+      url: 'https://github.com/org/administered/pull/9'
+    }
+  ];
+  const gh = new FakeGh({
+    prs,
+    permissions: {
+      'org/maintained': { push: false, maintain: true, admin: false },
+      'org/administered': { push: false, maintain: false, admin: true }
+    }
+  });
+
+  await runReaper({ inputs: baseConfig, gh, workspace: createWorkspace(), artifactClient: artifactStub });
+
+  assert.deepStrictEqual(gh.closed.map(({ repo }) => repo), ['org/maintained', 'org/administered']);
+});
+
+test('runReaper protects external contributions by default and deduplicates repository lookups', async () => {
+  const prs = [1, 2].map((number) => ({
+    number,
+    repository: { nameWithOwner: 'external/project' },
+    title: `External PR ${number}`,
+    url: `https://github.com/external/project/pull/${number}`
+  }));
+  const gh = new FakeGh({
+    prs,
+    permissions: { 'external/project': { push: false, maintain: false, admin: false } }
+  });
+  const workspace = createWorkspace();
+
+  await runReaper({ inputs: baseConfig, gh, workspace, artifactClient: artifactStub });
+
+  assert.deepStrictEqual(gh.closed, []);
+  assert.deepStrictEqual(gh.permissionLookups, ['external/project']);
+  assert.deepStrictEqual(JSON.parse(readFileSync(join(workspace, 'prs.json'), 'utf8')), []);
+  assert.match(readFileSync(outputFile, 'utf8'), /\n0\n/);
+});
+
+test('runReaper includes external contributions only when explicitly enabled', async () => {
+  const pr = {
+    number: 10,
+    repository: { nameWithOwner: 'external/project' },
+    title: 'Opted-in external PR',
+    url: 'https://github.com/external/project/pull/10'
+  };
+  const gh = new FakeGh({ prs: [pr] });
+
+  await runReaper({
+    inputs: { ...baseConfig, includeExternalContributions: true },
+    gh,
+    workspace: createWorkspace(),
+    artifactClient: artifactStub
+  });
+
+  assert.strictEqual(gh.closed.length, 1);
+  assert.deepStrictEqual(gh.permissionLookups, []);
+});
+
+test('runReaper applies explicit exclusions before the external contribution opt-in', async () => {
+  const url = 'https://github.com/external/project/pull/11';
+  const gh = new FakeGh({
+    prs: [{ number: 11, repository: { nameWithOwner: 'external/project' }, title: 'Excluded', url }]
+  });
+
+  await runReaper({
+    inputs: { ...baseConfig, includeExternalContributions: true, exclude: [url] },
+    gh,
+    workspace: createWorkspace(),
+    artifactClient: artifactStub
+  });
+
+  assert.deepStrictEqual(gh.closed, []);
+  assert.deepStrictEqual(gh.permissionLookups, []);
+});
+
+test('runReaper fails closed when repository permission lookup fails', async () => {
+  const gh = new FakeGh({
+    prs: [{
+      number: 12,
+      repository: { nameWithOwner: 'unknown/project' },
+      title: 'Unknown permissions',
+      url: 'https://github.com/unknown/project/pull/12'
+    }],
+    permissionError: new Error('API unavailable')
+  });
+  const warnings = [];
+  const consoleStub = {
+    log() {},
+    warn: (message) => warnings.push(message),
+    error() {}
+  };
+
+  await runReaper({
+    inputs: baseConfig,
+    gh,
+    workspace: createWorkspace(),
+    artifactClient: artifactStub,
+    console: consoleStub
+  });
+
+  assert.deepStrictEqual(gh.closed, []);
+  assert(warnings.some((message) => message.includes('protecting its PRs: API unavailable')));
 });

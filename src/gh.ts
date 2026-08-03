@@ -30,6 +30,12 @@ export interface PullRequest {
   url: string;
 }
 
+export interface RepositoryPermissions {
+  push: boolean;
+  maintain: boolean;
+  admin: boolean;
+}
+
 export class GhCli {
   private supportsPermalinkField: boolean | null = null;
   private static readonly closeRetryDelayMs = 1500;
@@ -169,6 +175,28 @@ export class GhCli {
     const { stdout } = await this.exec(fallbackArgs);
     const results = JSON.parse(stdout) as PullRequest[];
     return results;
+  }
+
+  async getRepositoryPermissions(repository: string): Promise<RepositoryPermissions> {
+    const { stdout } = await this.exec(['api', `repos/${repository}`, '--jq', '.permissions']);
+    const value: unknown = JSON.parse(stdout);
+    if (!value || typeof value !== 'object') {
+      throw new Error(`Repository permissions were missing for ${repository}.`);
+    }
+
+    const permissions = value as Record<string, unknown>;
+    const names = ['push', 'maintain', 'admin'] as const;
+    for (const name of names) {
+      if (typeof permissions[name] !== 'boolean') {
+        throw new Error(`Repository permission "${name}" was missing or ambiguous for ${repository}.`);
+      }
+    }
+
+    return {
+      push: permissions.push as boolean,
+      maintain: permissions.maintain as boolean,
+      admin: permissions.admin as boolean
+    };
   }
 
   async closePullRequest(

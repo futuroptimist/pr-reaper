@@ -87,11 +87,17 @@ async function uploadDryRunArtifacts(prs, workspace, artifact) {
     await fs.writeFile(csvPath, formatCsv(prs));
     await artifact.uploadArtifact('dry-run-prs', [jsonPath, markdownPath, csvPath], artifactDir);
 }
-function logSearchResults(logger, prs, skipped) {
-    logger.info(`Found ${prs.length + skipped.length} pull request(s).`);
-    if (skipped.length > 0) {
-        logger.info(`Skipped ${skipped.length} PR(s) that matched the exclusion list.`);
-        for (const pr of skipped) {
+function logSearchResults(logger, prs, excluded, external) {
+    logger.info(`Found ${prs.length + excluded.length + external.length} pull request(s).`);
+    if (excluded.length > 0) {
+        logger.info(`Explicitly excluded ${excluded.length} PR(s) that matched the exclusion list.`);
+        for (const pr of excluded) {
+            logger.info(`  - ${pr.repository.nameWithOwner}#${pr.number} — ${pr.title}`);
+        }
+    }
+    if (external.length > 0) {
+        logger.info(`Protected ${external.length} external contribution(s) from reaping.`);
+        for (const pr of external) {
             logger.info(`  - ${pr.repository.nameWithOwner}#${pr.number} — ${pr.title}`);
         }
     }
@@ -104,7 +110,7 @@ function logSearchResults(logger, prs, skipped) {
         logger.info(`  - ${pr.repository.nameWithOwner}#${pr.number} — ${pr.title}`);
     }
 }
-async function writeSummary(prs, skipped) {
+async function writeSummary(prs, excluded, external) {
     core.summary.addHeading('pr-reaper summary', 2);
     if (prs.length === 0) {
         core.summary.addRaw('No open pull requests found after filtering.');
@@ -115,10 +121,17 @@ async function writeSummary(prs, skipped) {
             .addBreak()
             .addList(prs.map((pr) => `${pr.title} — [${pr.repository.nameWithOwner}#${pr.number}](${pr.permalink || pr.url})`));
     }
-    if (skipped.length > 0) {
+    if (excluded.length > 0) {
         core.summary
             .addBreak()
-            .addDetails('Skipped pull requests', skipped
+            .addDetails('Explicitly excluded pull requests', excluded
+            .map((pr) => `${pr.repository.nameWithOwner}#${pr.number} — ${pr.title}`)
+            .join('\n') || 'None');
+    }
+    if (external.length > 0) {
+        core.summary
+            .addBreak()
+            .addDetails('Protected external contributions', external
             .map((pr) => `${pr.repository.nameWithOwner}#${pr.number} — ${pr.title}`)
             .join('\n') || 'None');
     }
@@ -127,6 +140,33 @@ async function writeSummary(prs, skipped) {
 function progressLabel(index, total) {
     const pct = total === 0 ? 0 : (index / total) * 100;
     return `[${index}/${total} - ${pct.toFixed(1)}%]`;
+}
+async function protectExternalContributions(prs, gh, logger) {
+    const permissionChecks = new Map();
+    const remaining = [];
+    const external = [];
+    for (const pr of prs) {
+        const repository = pr.repository.nameWithOwner;
+        let check = permissionChecks.get(repository.toLowerCase());
+        if (!check) {
+            check = gh
+                .getRepositoryPermissions(repository)
+                .then((permissions) => permissions.push || permissions.maintain || permissions.admin)
+                .catch((error) => {
+                const message = error instanceof Error ? error.message : String(error);
+                logger.warn(`Could not verify mutation permission for ${repository}; protecting its PRs: ${message}`);
+                return false;
+            });
+            permissionChecks.set(repository.toLowerCase(), check);
+        }
+        if (await check) {
+            remaining.push(pr);
+        }
+        else {
+            external.push(pr);
+        }
+    }
+    return { remaining, external };
 }
 export async function runReaper(options) {
     const workspace = options.workspace ?? process.cwd();
@@ -176,10 +216,13 @@ export async function runReaper(options) {
         org: inputs.org,
         titleFilter: inputs.titleFilter
     });
-    const { remaining, skipped } = applyExclude(results, inputs.exclude);
+    const { remaining: afterExclusions, skipped: excluded } = applyExclude(results, inputs.exclude);
+    const { remaining, external } = inputs.includeExternalContributions
+        ? { remaining: afterExclusions, external: [] }
+        : await protectExternalContributions(afterExclusions, gh, logger);
     await fs.writeFile(join(workspace, 'prs.json'), JSON.stringify(remaining, null, 2));
-    logSearchResults(logger, remaining, skipped);
-    await writeSummary(remaining, skipped);
+    logSearchResults(logger, remaining, excluded, external);
+    await writeSummary(remaining, excluded, external);
     core.setOutput('count', String(remaining.length));
     if (inputs.dryRun) {
         if (!hasArtifactRuntimeEnv(env)) {

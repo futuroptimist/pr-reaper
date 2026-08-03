@@ -139,6 +139,25 @@ export class GhCli {
         const results = JSON.parse(stdout);
         return results;
     }
+    async getRepositoryPermissions(repository) {
+        const { stdout } = await this.exec(['api', `repos/${repository}`, '--jq', '.permissions']);
+        const value = JSON.parse(stdout);
+        if (!value || typeof value !== 'object') {
+            throw new Error(`Repository permissions were missing for ${repository}.`);
+        }
+        const permissions = value;
+        const names = ['push', 'maintain', 'admin'];
+        for (const name of names) {
+            if (typeof permissions[name] !== 'boolean') {
+                throw new Error(`Repository permission "${name}" was missing or ambiguous for ${repository}.`);
+            }
+        }
+        return {
+            push: permissions.push,
+            maintain: permissions.maintain,
+            admin: permissions.admin
+        };
+    }
     async closePullRequest(repository, number, comment, deleteBranch) {
         const args = ['pr', 'close', String(number), '--repo', repository, '--comment', comment];
         if (deleteBranch) {

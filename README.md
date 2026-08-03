@@ -26,6 +26,7 @@ before reaping begins. `gh search prs` powers the lookup so results match what G
 | Input | Type | Default | Example | Notes |
 | --- | --- | --- | --- | --- |
 | `dry_run` | boolean | `true` | `false` | When `true`, the action only gathers results and lists them without closing. |
+| `include_external_contributions` | boolean | `false` | `true` | When `false`, protects PRs in repositories where the token lacks `push`, `maintain`, and `admin` permission. |
 | `author` | string | `""` | `octocat` | Defaults to `github.actor` when blank. |
 | `org` | string | `""` | `democratizedspace` | Requires `read:org` scope on the token. |
 | `title_filter` | string | `""` | `Codex` | Passed to `gh search prs --search ... --match title`. |
@@ -42,6 +43,13 @@ before reaping begins. `gh search prs` powers the lookup so results match what G
 
 - Dry runs never close PRs or delete branches. They only log matches to the console and step
   summary.
+- External contributions are protected by default. A PR is external when the authenticated token
+  has none of `push`, `maintain`, or `admin` permission on its repository; this permission-based
+  check keeps repositories in organizations the user maintains eligible.
+- Repository permission lookups are deduplicated. Missing, ambiguous, or failed lookups fail closed:
+  the repository's PRs are skipped with a warning.
+- `exclude_urls` always takes precedence, including when `include_external_contributions` is `true`.
+  Explicit exclusions are applied before repository permission checks.
 - Authenticated runs are required for mutations. If `gh` cannot detect an authenticated identity or
   the token lacks `repo` scope, the workflow fails before searching.
 - Providing `org` requires `read:org`. The workflow exits early with a descriptive error when the
