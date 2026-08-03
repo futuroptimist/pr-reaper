@@ -139,6 +139,14 @@ export class GhCli {
         const results = JSON.parse(stdout);
         return results;
     }
+    async getRepositoryPermissions(repository) {
+        const { stdout } = await this.exec(['api', `repos/${repository}`, '--jq', '.permissions']);
+        const trimmed = stdout.trim();
+        if (!trimmed || trimmed === 'null') {
+            return null;
+        }
+        return JSON.parse(trimmed);
+    }
     async closePullRequest(repository, number, comment, deleteBranch) {
         const args = ['pr', 'close', String(number), '--repo', repository, '--comment', comment];
         if (deleteBranch) {

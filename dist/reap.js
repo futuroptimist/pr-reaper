@@ -87,11 +87,17 @@ async function uploadDryRunArtifacts(prs, workspace, artifact) {
     await fs.writeFile(csvPath, formatCsv(prs));
     await artifact.uploadArtifact('dry-run-prs', [jsonPath, markdownPath, csvPath], artifactDir);
 }
-function logSearchResults(logger, prs, skipped) {
-    logger.info(`Found ${prs.length + skipped.length} pull request(s).`);
-    if (skipped.length > 0) {
-        logger.info(`Skipped ${skipped.length} PR(s) that matched the exclusion list.`);
-        for (const pr of skipped) {
+function logSearchResults(logger, prs, explicitlyExcluded, protectedExternal) {
+    logger.info(`Found ${prs.length + explicitlyExcluded.length + protectedExternal.length} pull request(s).`);
+    if (explicitlyExcluded.length > 0) {
+        logger.info(`Explicitly excluded ${explicitlyExcluded.length} PR(s) via exclude_urls.`);
+        for (const pr of explicitlyExcluded) {
+            logger.info(`  - ${pr.repository.nameWithOwner}#${pr.number} — ${pr.title}`);
+        }
+    }
+    if (protectedExternal.length > 0) {
+        logger.info(`Protected ${protectedExternal.length} external contribution(s).`);
+        for (const pr of protectedExternal) {
             logger.info(`  - ${pr.repository.nameWithOwner}#${pr.number} — ${pr.title}`);
         }
     }
@@ -104,7 +110,7 @@ function logSearchResults(logger, prs, skipped) {
         logger.info(`  - ${pr.repository.nameWithOwner}#${pr.number} — ${pr.title}`);
     }
 }
-async function writeSummary(prs, skipped) {
+async function writeSummary(prs, explicitlyExcluded, protectedExternal) {
     core.summary.addHeading('pr-reaper summary', 2);
     if (prs.length === 0) {
         core.summary.addRaw('No open pull requests found after filtering.');
@@ -115,14 +121,66 @@ async function writeSummary(prs, skipped) {
             .addBreak()
             .addList(prs.map((pr) => `${pr.title} — [${pr.repository.nameWithOwner}#${pr.number}](${pr.permalink || pr.url})`));
     }
-    if (skipped.length > 0) {
+    if (explicitlyExcluded.length > 0) {
         core.summary
             .addBreak()
-            .addDetails('Skipped pull requests', skipped
+            .addDetails('Explicitly excluded via exclude_urls', explicitlyExcluded
+            .map((pr) => `${pr.repository.nameWithOwner}#${pr.number} — ${pr.title}`)
+            .join('\n') || 'None');
+    }
+    if (protectedExternal.length > 0) {
+        core.summary
+            .addBreak()
+            .addDetails('Protected external contributions', protectedExternal
             .map((pr) => `${pr.repository.nameWithOwner}#${pr.number} — ${pr.title}`)
             .join('\n') || 'None');
     }
     await core.summary.write();
+}
+function hasWritePermission(permissions) {
+    if (!permissions) {
+        return null;
+    }
+    const values = [permissions.push, permissions.maintain, permissions.admin];
+    if (!values.every((value) => typeof value === 'boolean')) {
+        return null;
+    }
+    return values.some(Boolean);
+}
+async function protectExternalContributions(prs, gh, logger) {
+    const lookups = new Map();
+    const canWrite = (repository) => {
+        const key = repository.toLowerCase();
+        const existing = lookups.get(key);
+        if (existing) {
+            return existing;
+        }
+        const lookup = gh.getRepositoryPermissions(repository).then((permissions) => {
+            const result = hasWritePermission(permissions);
+            if (result === null) {
+                logger.warn(`Skipping ${repository}: repository permissions were missing or ambiguous.`);
+                return false;
+            }
+            return result;
+        }, (error) => {
+            const message = error instanceof Error ? error.message : String(error);
+            logger.warn(`Skipping ${repository}: repository permission lookup failed: ${message}`);
+            return false;
+        });
+        lookups.set(key, lookup);
+        return lookup;
+    };
+    const remaining = [];
+    const protectedExternal = [];
+    for (const pr of prs) {
+        if (await canWrite(pr.repository.nameWithOwner)) {
+            remaining.push(pr);
+        }
+        else {
+            protectedExternal.push(pr);
+        }
+    }
+    return { remaining, protectedExternal };
 }
 function progressLabel(index, total) {
     const pct = total === 0 ? 0 : (index / total) * 100;
@@ -176,10 +234,13 @@ export async function runReaper(options) {
         org: inputs.org,
         titleFilter: inputs.titleFilter
     });
-    const { remaining, skipped } = applyExclude(results, inputs.exclude);
+    const { remaining: notExplicitlyExcluded, skipped: explicitlyExcluded } = applyExclude(results, inputs.exclude);
+    const { remaining, protectedExternal } = inputs.includeExternalContributions
+        ? { remaining: notExplicitlyExcluded, protectedExternal: [] }
+        : await protectExternalContributions(notExplicitlyExcluded, gh, logger);
     await fs.writeFile(join(workspace, 'prs.json'), JSON.stringify(remaining, null, 2));
-    logSearchResults(logger, remaining, skipped);
-    await writeSummary(remaining, skipped);
+    logSearchResults(logger, remaining, explicitlyExcluded, protectedExternal);
+    await writeSummary(remaining, explicitlyExcluded, protectedExternal);
     core.setOutput('count', String(remaining.length));
     if (inputs.dryRun) {
         if (!hasArtifactRuntimeEnv(env)) {

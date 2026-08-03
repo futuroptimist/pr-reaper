@@ -17,7 +17,7 @@ before reaping begins. `gh search prs` powers the lookup so results match what G
    cross-repo searches are then limited to the current repository.
 2. Go to **Actions → Close my open PRs → Run workflow**.
 3. Leave **dry_run=true** to preview. The run prints the PRs that would be closed and writes them to
-   the step summary.
+   the step summary. By default, external contributions are protected.
 4. When happy, re-run with **dry_run=false** to close the PRs (and optionally delete their branches)
    while posting the configured comment.
 
@@ -33,10 +33,11 @@ before reaping begins. `gh search prs` powers the lookup so results match what G
 | `limit` | string | `"1000"` | `250` | Valid range: `1`–`1000`. |
 | `comment` | string | `"Closing as superseded by a newer Codex run."` | `"Thanks for iterating!"` | Comment posted while closing PRs. |
 | `exclude_urls` | string | `""` | `https://github.com/octo/repo/pull/42` | Accepts newline, comma, pipe, or semicolon separators. Provide PR URLs to skip. |
+| `include_external_contributions` | boolean | `false` | `true` | When checked, permits PRs to repositories where the token lacks `push`, `maintain`, or `admin` permission. |
 
 **Outputs**
 
-- `count`: number of pull requests matched after filtering exclusions.
+- `count`: number of pull requests eligible after all safety filters.
 
 ## Safety model
 
@@ -47,7 +48,15 @@ before reaping begins. `gh search prs` powers the lookup so results match what G
 - Providing `org` requires `read:org`. The workflow exits early with a descriptive error when the
   scope is missing and emits a warning when scope detection is inconclusive.
 - Exclusion filters accept PR URLs to ensure safe skips even when links are copied from different
-  contexts.
+  contexts. `exclude_urls` always takes precedence, including when external contributions are
+  explicitly included.
+- An “external contribution” is a PR to a repository where the authenticated token does not have
+  `push`, `maintain`, or `admin` permission. Repository ownership is not used, so PRs in
+  organizations maintained by the authenticated user remain eligible.
+- External contributions are skipped by default. Permission checks are performed once per
+  repository; a failed, missing, or ambiguous permission response fails closed by protecting every
+  PR in that repository and emitting a warning. Check `include_external_contributions` only when
+  intentionally reaping those PRs.
 
 ## Auth (important)
 
