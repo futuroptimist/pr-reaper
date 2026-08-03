@@ -380,6 +380,33 @@ test('permission lookups are deduplicated per repository', async () => {
   assert.deepStrictEqual(gh.closed, []);
 });
 
+test('permission lookups run concurrently with a bounded limit', async () => {
+  let activeLookups = 0;
+  let maximumActiveLookups = 0;
+  const prs = Array.from({ length: 8 }, (_, index) => ({
+    ...externalPr,
+    number: index + 1,
+    repository: { nameWithOwner: `upstream/project-${index}` },
+    url: `https://github.com/upstream/project-${index}/pull/${index + 1}`
+  }));
+  const gh = new FakeGh({
+    prs,
+    permissions: async () => {
+      activeLookups += 1;
+      maximumActiveLookups = Math.max(maximumActiveLookups, activeLookups);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      activeLookups -= 1;
+      return { push: true, maintain: false, admin: false };
+    }
+  });
+
+  await runReaper({ inputs: baseConfig, gh, workspace: createWorkspace(), artifactClient: artifactStub });
+
+  assert.ok(maximumActiveLookups > 1, 'expected repository lookups to overlap');
+  assert.ok(maximumActiveLookups <= 5, 'expected at most five concurrent repository lookups');
+  assert.strictEqual(gh.closed.length, prs.length);
+});
+
 test('explicit exclusions avoid unnecessary permission lookups', async () => {
   const gh = new FakeGh({ prs: [externalPr] });
   await runReaper({

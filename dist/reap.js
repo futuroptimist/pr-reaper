@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import * as core from '@actions/core';
 import { DefaultArtifactClient } from '@actions/artifact';
 import { applyExclude } from './filter.js';
+const PERMISSION_LOOKUP_CONCURRENCY = 5;
 function toLogger(consoleLike) {
     return {
         info: (message) => consoleLike.log(message),
@@ -148,32 +149,39 @@ function hasWritePermission(permissions) {
     return values.some(Boolean);
 }
 async function protectExternalContributions(prs, gh, logger) {
-    const lookups = new Map();
-    const canWrite = (repository) => {
-        const key = repository.toLowerCase();
-        const existing = lookups.get(key);
-        if (existing) {
-            return existing;
-        }
-        const lookup = gh.getRepositoryPermissions(repository).then((permissions) => {
-            const result = hasWritePermission(permissions);
-            if (result === null) {
-                logger.warn(`Skipping ${repository}: repository permissions were missing or ambiguous.`);
+    const repositories = new Map();
+    for (const pr of prs) {
+        const repository = pr.repository.nameWithOwner;
+        repositories.set(repository.toLowerCase(), repository);
+    }
+    const repositoryEntries = [...repositories.entries()];
+    const writeAccess = new Map();
+    let nextRepository = 0;
+    const checkRepositories = async () => {
+        while (nextRepository < repositoryEntries.length) {
+            const [key, repository] = repositoryEntries[nextRepository++];
+            const canWrite = await gh.getRepositoryPermissions(repository).then((permissions) => {
+                const result = hasWritePermission(permissions);
+                if (result === null) {
+                    logger.warn(`Skipping ${repository}: repository permissions were missing or ambiguous.`);
+                    return false;
+                }
+                return result;
+            }, (error) => {
+                const message = error instanceof Error ? error.message : String(error);
+                logger.warn(`Skipping ${repository}: repository permission lookup failed: ${message}`);
                 return false;
-            }
-            return result;
-        }, (error) => {
-            const message = error instanceof Error ? error.message : String(error);
-            logger.warn(`Skipping ${repository}: repository permission lookup failed: ${message}`);
-            return false;
-        });
-        lookups.set(key, lookup);
-        return lookup;
+            });
+            writeAccess.set(key, canWrite);
+        }
     };
+    // Bound parallel API calls to improve performance without creating a large request burst.
+    const workerCount = Math.min(PERMISSION_LOOKUP_CONCURRENCY, repositoryEntries.length);
+    await Promise.all(Array.from({ length: workerCount }, () => checkRepositories()));
     const remaining = [];
     const protectedExternal = [];
     for (const pr of prs) {
-        if (await canWrite(pr.repository.nameWithOwner)) {
+        if (writeAccess.get(pr.repository.nameWithOwner.toLowerCase())) {
             remaining.push(pr);
         }
         else {
